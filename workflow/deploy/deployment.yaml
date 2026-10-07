@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nodepool-manager-worker
+  namespace: hypershift-workflows
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: nodepool-manager-worker
+  template:
+    metadata:
+      labels:
+        app: nodepool-manager-worker
+    spec:
+      containers:
+        - name: worker
+          image: default-route-openshift-image-registry.apps.cluster-98dwb.dyn.redhatworkshops.io/hypershift-workflows/nodepool-manager:latest
+          imagePullPolicy: Always
+          env:
+            - name: TEMPORAL_HOST
+              value: "temporal-frontend.temporal.svc.cluster.local:7233"
+            - name: TEMPORAL_NAMESPACE
+              value: "default"
+            - name: TEMPORAL_TASK_QUEUE
+              value: "nodepool-manager"
+            - name: GIT_REPO_URL
+              valueFrom:
+                secretKeyRef:
+                  name: workflow-credentials
+                  key: GIT_REPO_URL
+            - name: GIT_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: workflow-credentials
+                  key: GIT_TOKEN
+            - name: GIT_BRANCH
+              valueFrom:
+                secretKeyRef:
+                  name: workflow-credentials
+                  key: GIT_BRANCH
+            - name: ARGOCD_URL
+              valueFrom:
+                secretKeyRef:
+                  name: workflow-credentials
+                  key: ARGOCD_URL
+            - name: ARGOCD_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: workflow-credentials
+                  key: ARGOCD_TOKEN
