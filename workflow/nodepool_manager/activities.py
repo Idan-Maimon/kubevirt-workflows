@@ -20,7 +20,7 @@ async def commit_cluster_distribution(input: CommitDistributionInput) -> None:
     """Patch spec.replicas for all changed zones and push in a single commit."""
     zones_summary = ", ".join(f"{z}={r}" for z, r in sorted(input.distribution.items()))
     message = (
-        f"scale {input.cluster} → total={input.desired_total} ({zones_summary})"
+        f"scale {input.cluster}/{input.node_type} → total={input.desired_total} ({zones_summary})"
     )
     commit_distribution(input.git_base_path, input.distribution, message)
 

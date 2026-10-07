@@ -5,17 +5,38 @@ across a fleet of OpenShift clusters backed by KubeVirt infrastructure.
 
 ---
 
-## Repository layout
+## Naming Convention
+
+Every resource name in the system is derived from two values: **cluster** and **node_type**.
+No other input is needed to locate or create any resource.
+
+### Node Type Format
 
 ```
-workflow/
-├── nodepool_manager/     # Part 1 — NodePool scale workflow
-├── replenishment/        # Part 3 — VM provisioning workflow
-├── shared/               # Shared clients (Git, ArgoCD, MCE, KubeVirt)
-└── api/                  # REST API entry point (SignalWithStart)
+vm-{cpu}-{ram}
+
+Examples:
+  vm-32-128    32 vCPU, 128 GB RAM
+  vm-16-64     16 vCPU,  64 GB RAM
+  vm-8-32       8 vCPU,  32 GB RAM
 ```
 
-The Fleet Engine controller (Part 2) lives in a separate repository.
+### Derived Names
+
+| Resource | Pattern | Example (OCP-A, vm-32-128) |
+|---|---|---|
+| Temporal Workflow ID | `scale-{cluster}-{node_type}` | `scale-OCP-A-vm-32-128` |
+| ArgoCD Application | `{cluster.lower()}-{node_type}` | `ocp-a-vm-32-128` |
+| Git base path | `nodepools/{cluster}/{node_type}` | `nodepools/OCP-A/vm-32-128` |
+| NodePool name (per zone) | `{cluster.lower()}-{node_type}-{zone}` | `ocp-a-vm-32-128-zone-1` |
+| Zone manifest file | `{git_base_path}/{zone}.yaml` | `nodepools/OCP-A/vm-32-128/zone-1.yaml` |
+
+> `argocd_app` and `git_base_path` are currently required fields in signals.
+> Once the naming schema is confirmed they will be auto-derived and removed.
+
+### Zones
+
+Always exactly 3, fixed names: `zone-1`, `zone-2`, `zone-3`.
 
 ---
 
@@ -23,127 +44,173 @@ The Fleet Engine controller (Part 2) lives in a separate repository.
 
 ### What it does
 
-Handles scale requests for a HyperShift NodePool. A user (or an automation layer)
-sends a desired replica count. The workflow commits the change to Git and waits for
-ArgoCD to sync it to the MCE cluster.
+Handles scale requests for one `(cluster, node_type)` pair. Distributes the requested
+total replica count evenly across the 3 zones and commits the change to Git.
+ArgoCD picks up the commit and syncs the NodePool objects to the MCE cluster.
 
-### Design: short-lived workflow per NodePool (Strategy B)
+### Temporal interface
 
-One Temporal workflow execution per NodePool, identified by a deterministic ID:
+#### Workflow startup
+
+Started automatically via `SignalWithStart` — callers never call `StartWorkflow` directly.
 
 ```
-scale-{cluster}-{nodepool}    e.g.  scale-OCP-A-zone1
+Workflow name : NodePoolManagerWorkflow
+Task queue    : nodepool-manager
+Workflow ID   : scale-{cluster}-{node_type}    e.g. scale-OCP-A-vm-32-128
+Input         : NodePoolManagerInput { cluster: str }
 ```
 
-The workflow starts on the first request and exits when no more signals are pending.
-The next request starts a new execution with the same ID. Temporal's `SignalWithStart`
-API guarantees no signal is ever lost in the gap between executions.
+`NodePoolManagerInput` carries only the cluster name for identity purposes.
+All operational data travels in signals.
 
-### Signal model — last-write-wins
+---
 
-All scale requests arrive as Temporal signals carrying a `desired_replicas` integer.
-The signal handler always overwrites a single `_pending` field — it does not queue:
+#### Signal: `scale`
 
+Request to set the desired total replica count for a `(cluster, node_type)` pair.
+
+```
+Signal name: scale
+Payload type: ScaleSignal
+```
+
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `cluster` | `str` | ✓ | Cluster name, e.g. `"OCP-A"` |
+| `node_type` | `str` | ✓ | VM profile, e.g. `"vm-32-128"` |
+| `desired_total` | `int` | ✓ | Absolute total replicas across **all 3 zones combined** |
+| `argocd_app` | `str` | ✓ | ArgoCD Application name, e.g. `"ocp-a-vm-32-128"` |
+| `git_base_path` | `str` | ✓ | Git directory for this node type, e.g. `"nodepools/OCP-A/vm-32-128"` |
+
+**Constraints:**
+- `desired_total` must be `>= 3` (minimum 1 replica per zone)
+- Signals below the minimum are silently discarded with a warning log
+- Use the `delete` signal to remove a node type entirely
+
+**Behaviour:**
+- Last-write-wins: if multiple signals arrive, only the latest `desired_total` is applied
+- If `desired_total` already matches the current git state, no commit is made
+- Signals arriving while a commit is in flight are buffered and processed after ArgoCD syncs
+
+**Example (Python):**
 ```python
-@workflow.signal
-def scale(self, desired: int):
-    self._pending = desired   # always latest, always overwrites previous
+from temporalio.client import Client
+from temporalio.common import WorkflowIDConflictPolicy
+from nodepool_manager.workflow import NodePoolManagerInput, NodePoolManagerWorkflow
+from nodepool_manager.models import ScaleSignal, workflow_id
+
+signal = ScaleSignal(
+    cluster="OCP-A",
+    node_type="vm-32-128",
+    desired_total=10,
+    argocd_app="ocp-a-vm-32-128",
+    git_base_path="nodepools/OCP-A/vm-32-128",
+)
+
+await client.start_workflow(
+    NodePoolManagerWorkflow.run,
+    NodePoolManagerInput(cluster="OCP-A"),
+    id=workflow_id("OCP-A", "vm-32-128"),   # "scale-OCP-A-vm-32-128"
+    task_queue="nodepool-manager",
+    id_conflict_policy=WorkflowIDConflictPolicy.USE_EXISTING,
+    start_signal="scale",
+    start_signal_args=[signal],
+)
 ```
 
-This means if three signals arrive (15, 12, 14), the workflow will only ever act on
-the latest value it sees at each checkpoint. Intermediate values are discarded.
+---
 
-### Checkpoint model — when can we pivot?
+#### Signal: `delete`
 
-The workflow has one hard checkpoint: the Git commit.
-
-```
-BEFORE git commit   → safe to pivot to latest _pending (skip stale desired)
-AFTER  git commit   → must complete current path; process latest on next loop
-```
-
-Once a commit is pushed, ArgoCD owns the reconciliation. The workflow waits for
-ArgoCD to report Healthy + Synced before looping.
-
-### Full workflow loop
+Remove all zone NodePool manifests for a `(cluster, node_type)` pair from git.
+ArgoCD prune deletes the NodePool objects from the MCE cluster.
 
 ```
-START (via SignalWithStart)
-  LOOP:
-    1. Wait for _pending to be set (blocks; workflow exits here if nothing arrives)
-    2. Read _pending → clear it
-    3. Read current replicas from Git (values.yaml)
-    4. If _pending changed while reading Git → use latest value (pivot)
-    5. If desired == current → back to step 1 (nothing to do)
-    6. [activity] CommitNodePoolPatch  — patch spec.replicas in values.yaml, push to main
-    7. [activity] SyncArgoCDApp        — POST /api/v1/applications/{name}/sync
-    8. [activity] WaitArgoCDHealthy    — poll until health=Healthy, sync=Synced
-    9. Back to step 1
-    (after N loops → continue_as_new to reset Temporal event history)
+Signal name: delete
+Payload type: DeleteSignal
 ```
 
-### Activities
+| Field | Type | Required | Description |
+|---|---|---|---|
+| `cluster` | `str` | ✓ | Cluster name |
+| `node_type` | `str` | ✓ | VM profile to remove |
+| `argocd_app` | `str` | ✓ | ArgoCD Application name |
+| `git_base_path` | `str` | ✓ | Git directory to delete |
 
-| Activity | What it does | Timeout |
-|---|---|---|
-| `read_replicas_from_git` | Clone/pull repo, parse values.yaml, return current replicas | 30s |
-| `commit_nodepool_patch` | Pull latest, patch `spec.replicas`, commit, push to main | 60s |
-| `sync_argocd_app` | POST to ArgoCD API to trigger a sync | 30s |
-| `wait_argocd_healthy` | Poll ArgoCD API until `health=Healthy` and `sync=Synced` | 10m |
+**Behaviour:**
+- Takes priority over any pending `scale` signal
+- Pending scale signals are discarded when delete is received
+- Implementation is currently a stub (logged warning, no git mutation)
 
-### Entry point — REST API
+---
 
-Callers do not start workflows directly. A thin REST API layer receives scale requests
-and calls `SignalWithStart`:
+### Zone distribution algorithm
+
+`desired_total` is spread across zones using even integer division:
 
 ```
-POST /scale
-{
-  "cluster":          "OCP-A",
-  "nodepool":         "zone-1",
-  "desired_replicas": 15
-}
+base     = desired_total // 3
+extras   = desired_total %  3
+zones    = sorted alphabetically → zone-1, zone-2, zone-3
+result   = first `extras` zones get base+1, rest get base
 ```
 
-This atomically starts the workflow if it is not running, or signals the existing
-execution if it is. The caller gets an immediate `202 Accepted` response; the
-workflow runs asynchronously.
+Examples:
+```
+desired_total=10  →  zone-1:4, zone-2:3, zone-3:3
+desired_total=9   →  zone-1:3, zone-2:3, zone-3:3
+desired_total=6   →  zone-1:2, zone-2:2, zone-3:2
+desired_total=5   →  zone-1:2, zone-2:2, zone-3:1
+desired_total=3   →  zone-1:1, zone-2:1, zone-3:1  ← minimum
+```
 
-### Scaling behaviour at fleet size (500 clusters, 3–6 NodePools each)
+---
 
-- **1,500–3,000 possible concurrent workflows** — Temporal handles this with ease.
-  Workflows that are idle (waiting on step 1) hold no worker threads; they are pure
-  state in Temporal's database.
-- **Burst handling** — if many NodePools scale simultaneously, Temporal dispatches
-  work to however many Python workers are running. Workers scale horizontally.
-- **continue_as_new** — after a configurable number of loop iterations (default: 200),
-  the workflow calls `continue_as_new` to reset its event history and avoid hitting
-  Temporal's history size limit.
+### Workflow lifecycle
 
-### Configuration
+```
+SignalWithStart("scale", ScaleSignal)
+  │
+  ├─ if workflow not running → start + deliver signal
+  └─ if workflow running     → deliver signal to existing execution
 
-All connection details are supplied via environment variables:
+Workflow loop:
+  1. Check _pending_scale / _pending_delete
+     └─ if both None → EXIT (next request starts a fresh execution)
+  2. delete takes priority if set
+  3. Read current replicas from Git (all 3 zones in one clone)
+  4. Pre-commit checkpoint: pivot to latest signal if newer one arrived
+  5. Compute new distribution
+  6. If no change → back to step 1
+  7. Commit all changed zone files in one git commit
+  8. Trigger ArgoCD sync
+  9. Wait for ArgoCD Healthy + Synced (up to 10 min)
+ 10. Back to step 1
 
-| Variable | Description | Default |
-|---|---|---|
-| `TEMPORAL_HOST` | Temporal frontend address | `temporal-frontend.temporal.svc.cluster.local:7233` |
-| `TEMPORAL_NAMESPACE` | Temporal namespace | `default` |
-| `TEMPORAL_TASK_QUEUE` | Task queue name | `nodepool-manager` |
-| `GIT_REPO_URL` | Git repository URL | — |
-| `GIT_TOKEN` | Git personal access token | — |
-| `GIT_BRANCH` | Target branch | `main` |
-| `ARGOCD_URL` | ArgoCD server URL | — |
-| `ARGOCD_TOKEN` | ArgoCD API token | — |
+After 200 iterations → continue_as_new (history reset, no data loss)
+```
+
+---
+
+### Adding a new node type
+
+No configuration changes required. A new node type is onboarded by:
+
+1. Creating the 3 zone YAML files in git under `nodepools/{cluster}/{node_type}/`
+2. Creating the ArgoCD Application `{cluster.lower()}-{node_type}` pointing to that path
+3. Sending the first `scale` signal — Temporal starts the workflow automatically
+
+The first signal IS the registration.
 
 ---
 
 ## Part 3 — Replenishment Workflow
 
-> Documentation in `replenishment/README.md` (to be written).
+> See `replenishment/` (not yet implemented).
 
 Triggered by the Fleet Engine controller when an InfraEnv drops below its agent
-low-watermark. Fans out N parallel `ProvisionOneVM` child workflows, one per VM
-needed. Each child handles the full path: VM creation → BMH + NMState → Agent ready.
+low-watermark. Fans out N parallel `ProvisionOneVM` child workflows.
 
 ---
 
@@ -151,9 +218,53 @@ needed. Each child handles the full path: VM creation → BMH + NMState → Agen
 
 > Lives in a separate repository.
 
-A Kubernetes controller that watches InfraEnv objects on the MCE cluster. When
-available agent count drops below the low-watermark annotation, it calls
-`SignalWithStart` on the Replenishment workflow.
+Watches InfraEnv objects on the MCE cluster. When available agent count drops
+below the low-watermark annotation, triggers the Replenishment workflow.
+
+---
+
+## Repository layout
+
+```
+workflow/
+├── README.md
+├── PLAN.md
+├── Dockerfile
+├── requirements.txt
+├── .gitignore
+├── nodepool_manager/
+│   ├── models.py       naming convention helpers + all signal/input types
+│   ├── workflow.py     Temporal workflow definition
+│   ├── activities.py   git read/commit, ArgoCD sync/wait
+│   └── worker.py       Temporal worker entry point
+├── shared/
+│   ├── git_client.py   clone, read replicas, commit distribution
+│   ├── argocd_client.py sync + poll ArgoCD REST API
+│   └── spread.py       even zone distribution algorithm
+├── tests/
+│   └── run_tests.py    7 integration tests (requires port-forward to Temporal)
+└── deploy/
+    ├── deployment.yaml       worker Deployment (hypershift-workflows namespace)
+    └── secret.example.yaml   credential template — copy to secret.yaml, never commit
+```
+
+---
+
+## Environment variables
+
+| Variable | Required | Default | Description |
+|---|---|---|---|
+| `GIT_REPO_URL` | ✓ | — | HTTPS URL of the git repo |
+| `GIT_TOKEN` | ✓ | — | Git personal access token (read + write) |
+| `ARGOCD_TOKEN` | ✓ | — | ArgoCD API bearer token |
+| `ARGOCD_URL` | | cluster route | ArgoCD server URL |
+| `GIT_BRANCH` | | `main` | Git branch for commits |
+| `TEMPORAL_HOST` | | `temporal-frontend.temporal.svc.cluster.local:7233` | Temporal frontend |
+| `TEMPORAL_NAMESPACE` | | `default` | Temporal namespace |
+| `TEMPORAL_TASK_QUEUE` | | `nodepool-manager` | Task queue name |
+
+> The ArgoCD JWT token expires in ~24 hours. For production, use a long-lived
+> service account token obtained via the ArgoCD API.
 
 ---
 
@@ -162,6 +273,6 @@ available agent count drops below the low-watermark annotation, it calls
 | ID | Decision | Rationale |
 |---|---|---|
 | ADR-O6 | Deterministic workflow IDs | Temporal deduplicates; no external locking needed |
-| ADR-O8 | VM creation via direct Kubernetes API | Not via Git — KubeVirt owns the VM lifecycle |
-| ADR-O9 | Last-write-wins signal field, not a queue | Desired-state semantics; stale intermediate values are irrelevant |
-| ADR-O10 | No in-flight cancellation past git commit | Once committed, ArgoCD reconciles; aborting mid-sync creates inconsistency |
+| ADR-O8 | VM creation via direct Kubernetes API | Not via Git — KubeVirt owns VM lifecycle |
+| ADR-O9 | Last-write-wins signal field | Desired-state semantics; stale intermediates are irrelevant |
+| ADR-O10 | No cancellation past git commit | Once committed, ArgoCD reconciles; mid-sync abort creates inconsistency |

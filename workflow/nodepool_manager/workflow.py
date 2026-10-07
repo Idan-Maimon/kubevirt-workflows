@@ -16,6 +16,7 @@ from .models import (
     CommitDistributionInput,
     DeleteSignal,
     ScaleSignal,
+    workflow_id,
 )
 from .activities import (
     commit_cluster_distribution,
@@ -124,6 +125,7 @@ class NodePoolManagerWorkflow:
             commit_cluster_distribution,
             CommitDistributionInput(
                 cluster=sig.cluster,
+                node_type=sig.node_type,
                 git_base_path=sig.git_base_path,
                 distribution=new_distribution,
                 desired_total=sig.desired_total,
