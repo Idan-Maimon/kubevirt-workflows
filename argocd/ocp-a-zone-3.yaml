@@ -1,0 +1,20 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ocp-a-zone-3
+  namespace: openshift-gitops
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/Idan-Maimon/kubevirt-workflows.git
+    targetRevision: main
+    path: nodepools/OCP-A/zone-3
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: clusters
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

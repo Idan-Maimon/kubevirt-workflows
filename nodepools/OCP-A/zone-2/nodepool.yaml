@@ -1,0 +1,22 @@
+apiVersion: hypershift.openshift.io/v1beta1
+kind: NodePool
+metadata:
+  name: ocp-a-zone-2
+  namespace: clusters
+  labels:
+    cluster: ocp-a
+    zone: zone-2
+spec:
+  clusterName: ocp-a
+  replicas: 2
+  management:
+    autoRepair: false
+    upgradeType: Replace
+  platform:
+    type: Agent
+    agent:
+      agentLabelSelector:
+        matchLabels:
+          zone: zone-2
+  release:
+    image: quay.io/openshift-release-dev/ocp-release:4.14.13-x86_64
