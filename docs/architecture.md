@@ -121,28 +121,61 @@
 
 ---
 
-## Technical Decisions (Open)
+## HIGH — Production Prerequisites
 
-| ID | TD |
-|---|---|
-| TD1 | Create helm for MCE, KV, HostedCluster, VM |
-| TD2 | Create Flows for Hosted cluster, KV cluster, Update cluster node count, |
-| TD3 | Create decisions for server→ rack → AZ, KV, MCE, hosted, server headroom, |
-| TD4 | Research about MCE version policies |
-| TD4 | Automate flow from task TD2 |
-| TD5 | Create dashboards (TBD) |
+| ID | Source | Category | Task |
+|---|---|---|---|
+| H1 | TD1 | GitOps | **Create Helm charts for MCE, KV, HostedCluster, and VM resources.** These are the foundational GitOps artifacts — ArgoCD (AD5) has nothing to sync without them. Blocks all automation workflows. |
+| H2 | TD2 | Orchestration | **Create Temporal saga workflows for: Hosted Cluster creation, KV cluster provisioning, and node count updates.** Each workflow must commit to Git only (AD13), observe ArgoCD convergence, and execute compensating transactions on failure. |
+| H3 | SC1.1 × R1, SC1.1 × R2 | Self-Service | **Build self-service catalog with pre-packaged NodePool profiles.** Must abstract Agent/Redfish complexity (AD3) and hide AZ allocation / KV-MCE placement logic from users. Include OpenAPI schema validation and GitOps pre-commit checks to reject invalid parameters (overlapping CIDRs, duplicate cluster names) before triggering pipelines. |
+| H4 | SC1.2 × R1, SC2.2 × R1, SC4.1 × R1 | Provisioning | **Implement warm pool (MCE inventory) pre-provisioning pipeline.** VMs must be pre-registered in MCE inventory before hosted clusters claim them. Background process provisions VMs on bare-metal nodes, maintains pool depth above defined low watermark, and alerts on depletion. Includes the 1:8 VM-to-BM ratio enforcement. |
+| H5 | AD15, SC2.2 × R1 | State Mgmt | **Build Server Scanner as live CMDB.** Must track strict VM lifecycle states (Available, In-Use, Quarantined, Draining) across KubeVirt hypervisors and MCE inventory. Provides capacity queries to Temporal for placement decisions and to dashboards for operational visibility. |
+| H6 | SC3.1 × R1, SC3.2 × R1 | Scheduling | **Configure pod scheduling topology across 3 AZs.** Implement `podAntiAffinity` for control plane pods (Hub) and `topologySpreadConstraints` for worker VMs. Worker VMs must be labeled with their hosted cluster name to evaluate spread constraints. Guarantees no single rack or AZ failure takes down a tenant's quorum. |
+| H7 | SC3.2 × R2, SC3.2 × R3, SC2.1 × R2 | Health | **Implement pre-flight health check engine.** Before any modification or upgrade: validate API server responding, ETCD quorum intact, no degraded ClusterOperators, target hypervisors have sufficient 1:1 capacity (AD16). If any check fails, queue the operation and notify the requestor. For upgrades: additionally verify ETCD backup taken and no in-progress operations. |
+| H8 | SC1.2 × R2, SC3.1 × R2 | Remediation | **Implement Node Health Check with automated unhealthy VM remediation.** Detect unhealthy worker VMs, quarantine them, draw replacement from warm pool, and coordinate fencing and replacement through Git via Temporal — all without human SRE intervention. If replacement VM fails to join within timeout, select alternative node and quarantine the failed one. |
+| H9 | SC2.1 × R2, Open item #3 | Capacity | **Build capacity-aware cell placement and routing logic.** Formalize which KV cluster receives new VMs based on cell utilization, 1:1 resource availability (AD16), and health status. If target cell lacks headroom, route to a different cell or reject with capacity feedback. Feeds into the future policy engine (AD17). |
+| H10 | R4 controls, SC2.2 × R4, SC3.1 × R4 | Lifecycle | **Complete cluster deletion workflow.** Create Temporal saga, runtime view diagram, and resource reclamation logic. Sequence: remove `deletionProtection` → delete NodePool manifests → wait for VM termination → delete HostedCluster manifest → clean up namespace/network. Verify workloads drained before node removal. Return deleted nodes to inventory; remove excess nodes and mark as available in Server Scanner. |
+| H11 | TD3, Open items #1, #3, #4 | Architecture | **Define infrastructure topology decisions: server → rack → AZ → KV → MCE → hosted mappings.** Includes AZ configuration, decision criteria for which KV cluster hosts new HostedClusters, and node-to-hostedcluster SLA allocation rules. These are prerequisites for the placement engine (H9). |
+| H12 | TD4 (automate) | Automation | **Automate Temporal workflows from TD2.** Move from manual/tested flows to fully automated pipelines triggered by self-service catalog events. Includes end-to-end GitOps integration: catalog request → Temporal workflow → Git commit → ArgoCD sync → convergence observation. |
+| H13 | Risks R2-R8 | Risk Mgmt | **Populate risk register R2-R8.** Identified failure modes to document: network partition (Hub ↔ KV), warm pool exhaustion under burst, MCE version skew during rolling upgrades, live migration failure cascade, Temporal outage impact, ODF storage saturation, Konnectivity tunnel degradation. |
 
-### Open Items
+---
 
-1. AZ configuration
-2. Git Repo layout
-3. Decision criteria of which KV cluster new hosted cluster will use
-4. Decide on allocations of nodes to hostedcluster SLA
-5. Node benchmarks
-6. Leaf sizes and control
-7. Node types and cpu to memory ratio
+## MEDIUM — Operational Maturity
 
-### Test Cases
+| ID | Source | Category | Task |
+|---|---|---|---|
+| M1 | SC2.2 × R2 | Reconciliation | **Build background MCE reconciliation loop.** Evaluate MCE desired state vs. actual node count at a configurable interval and add nodes accordingly. Must detect inventory shortfalls and trigger warm pool replenishment. |
+| M2 | SC2.2 × R2 | Concurrency | **Implement Temporal workflow locking for concurrent cluster operations.** Concurrent scale requests for the same cluster must be serialized to prevent conflicting Git commits. Includes lock acquisition, timeout, and dead-lock prevention. |
+| M3 | SC2.1 × R3, SC3.1 × R3 | Upgrades | **Configure rolling upgrade with strict surge strategy.** Set `maxSurge > 0`, `maxUnavailable = 0` on NodePool controllers. Surge VMs allocated from warm pool. Ensure tenant compute capacity never drops below pre-upgrade levels. If surge would deplete warm pool below critical watermark, reduce upgrade parallelism. |
+| M4 | SC3.1 × R2, AD2, AD4, C7 | Resilience | **Set up and validate KubeVirt Live Migration for hypervisor maintenance.** Requires ODF shared storage (AD2). VMs live-migrate to healthy hosts without dropping network connections. Must validate migration doesn't cross AZ boundaries (C7). Define failure handling: retry → cold-migrate fallback → alert. |
+| M5 | TD4, SC3.2 × R3 | Versioning | **Research and implement MCE version skew policies.** MCE upgrades must precheck hostedclusters versions and calculate version skew against C3/C4 constraints. Design rolling cross-AZ upgrade strategy handling version differences between Hubs. Prevent tenants from requesting versions ahead of their MCE Hub's support. |
+| M6 | SC2.2 × R3 | Upgrades | **Separate Hub control plane upgrade path from KubeVirt worker upgrade path.** Hub updates must not block tenant operations. Worker NodePool manifests updated per-AZ in Git, triggering zone-by-zone rolling replacement independently of Hub lifecycle. |
+| M7 | SC3.2 × R3 | Upgrades | **Implement KV cluster VM evacuation before worker node updates.** Before updating KubeVirt cluster worker nodes, all tenant VMs on affected nodes must be evacuated via live migration. Ensures no tenant disruption during infrastructure-level updates. |
+| M8 | SC3.2 × R2 | Capacity | **Enforce minimum 15% vmotion headroom on KV clusters.** KV clusters must retain at least 15% of servers untouched (no tenant VMs) to serve as live migration targets during maintenance. Pre-flight checks must block modifications that would violate this threshold. |
+| M9 | SC4.1 × R1, Open items #5, #6, #7 | Capacity | **Define node types, VM sizes, CPU/memory ratios, and VM-per-host ratios.** Codify the 1:8 VM-to-BM ratio. Determine which VM sizes (e.g., 8/64) to offer as standard profiles. Validate fit with AD16 (1:1 at KubeVirt level). Feed results into placement engine and self-service catalog profiles. |
+| M10 | Open item #2 | Architecture | **Design Git repository layout for all manifest types.** Structure for MCE, KV, HostedCluster, NodePool, and ArgoCD Application manifests. Layout directly impacts ArgoCD application topology, drift detection granularity, RBAC, and team access control. |
+| M11 | TD5, SC1.1 × R3 | Observability | **Build Grafana dashboards for platform operators and tenants.** Platform: warm pool inventory levels, provisioning latency, cell utilization heatmap, ArgoCD sync health. Tenant: upgrade progress, cluster health status, stalled upgrade notifications. Serves SC1.1 (Ease of Use). |
+| M12 | SC2.2 × R1 | State Mgmt | **Implement Server Scanner ↔ MCE inventory reconciliation.** Server Scanner must reconcile against MCE inventory as source of truth. Divergence (Scanner says "Available" but MCE has host in error state) must be detected and resolved before Temporal selects nodes for placement. |
+| M13 | SC3.1 × R2 | Resilience | **Build compensating transaction framework.** Temporal must handle: Git commit revert on failure, node quarantine on join timeout, alternative node selection and retry, and dead letter queue for exhausted retries. Each compensation step must be idempotent. |
+| M14 | Risk R1 | Risk | **Implement Risk R1 mitigation: cluster operator health bypass when no nodepools attached.** Automation must check whether a hosted cluster has worker nodes before evaluating cluster operator health. Skip health check on control-plane-only clusters to prevent blocking downstream processes. |
+| M15 | SC3.1 (critique) | HA | **Deploy Temporal in HA configuration.** Cross-AZ topology (3-node minimum), persistent storage backend, and documented workflow recovery behavior on restart. Temporal is the orchestration brain — its unavailability blocks all provisioning, scaling, and compensating transactions. |
 
-- create 28 VMs of 8/32 using 2:1 CPU overcommitment ratio \* num of workers
-- create 14 VMs of 8/64 using with no overcommitment \* num of workers
+---
+
+## LOW — Hardening & Operational Excellence
+
+| ID | Source | Category | Task |
+|---|---|---|---|
+| L1 | SC1.1 × R3 | Self-Service | **Build tenant self-service upgrade portal with version filtering.** Surface available target versions filtered by MCE compatibility (C3/C4). Allow tenants to select upgrade window. Display upgrade progress and stall notifications via dashboards. |
+| L2 | SC4.1 × R2 | Efficiency | **Design resource sharing/lending mechanism for idle tenant-bounded resources.** Unused resources bounded to a user can be consumed by a different user for a limited time. Requires resource reclamation SLA, tenant notification, and graceful eviction when the original tenant needs capacity back. |
+| L3 | SC1.2 × R3 | Automation | **Configure auto-rollback on post-upgrade health check failure.** If NodePool controller detects health degradation after upgrading worker nodes, automatically roll back to previous version. Requires health check definition, rollback trigger threshold, and notification to tenant. |
+| L4 | SC2.2 × R3 | Upgrades | **Implement deterministic node loaner/replacement via nodepool swap.** Nodes can be loaned deterministically to allow a complete replacement of old nodes with newer versions by replacing old nodepool with new nodepool. Ensures clean upgrade path without in-place mutation. |
+| L5 | SC3.2 × R3 | Upgrades | **Implement MCE upgrade hostedcluster version pre-check.** Before upgrading an MCE Hub, pre-check all hosted clusters' versions and calculate version skew policy compliance. Block MCE upgrade if it would violate C3/C4 for any hosted cluster. |
+| L6 | AD17, SC5 | Scaling | **Implement cell scaling policy engine (AD17).** Centralized, configurable policy engine governing cell lifecycle: creation triggers at high watermark, drain triggers at low watermark, cooldown/hysteresis to prevent flapping, provisioning lead time awareness (~30-60 min). Configuration-driven, not code-driven. |
+| L7 | Cross-cutting | Observability | **Build ArgoCD drift detection alerting.** Surface sync failures and out-of-sync resources to Temporal workflows and SRE dashboards. The saga pattern assumes ArgoCD syncs successfully — silent failures create invisible state divergence. |
+| L8 | Critique #1 | Networking | **Implement MCE Hub ↔ KV cluster connectivity monitoring with Temporal circuit-breaker.** Dedicated health probes from each MCE Hub member to each KV cluster API. If connectivity degrades, Temporal stops scheduling NodePool operations for that AZ until connectivity is restored. |
+| L9 | Critique #2 | Networking | **Monitor Konnectivity tunnel health as a first-class SLI per HostedCluster.** Tunnel degradation silently breaks `kubectl exec`, logs, metrics, and webhooks while all components appear healthy individually. Define alerting thresholds and remediation actions. |
+| L10 | SC2 measurement | Testing | **Define SLA benchmarking framework.** Establish provisioning latency baselines (P50/P95/P99), cluster health check definitions, and AZ failover recovery time targets. Required to measure SC2 (Predictability) and SC3.2 (99.95% uptime) compliance. |
+| L11 | SC2.1 × R1 | Testing | **Run cell boundary stress tests.** Validate cell capacity limits with stress tests at 1:1 CPU/memory allocation (AD16). Confirm the 14 VMs of 8/64 (no overcommitment) test case. Revise or remove the 28 VMs of 8/32 with 2:1 overcommit test case (contradicts AD16). |
+| L12 | Operations | Runbooks | **Design operational runbooks.** Cover: Temporal DLQ handling, fenced node investigation, AZ isolation response, warm pool emergency replenishment, live migration failure escalation, partial deletion recovery. |
