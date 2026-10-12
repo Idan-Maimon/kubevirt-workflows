@@ -88,6 +88,7 @@
 | AD18 | KV Cluster Control Planes as HyperShift Hosted Control Planes | KV cluster control planes run as HyperShift hosted control planes (pods) on the Seed Cluster's worker nodes, not as dedicated BM master nodes. This eliminates the need for BM master nodes per KV cluster, significantly reducing BM node count. A single Seed Cluster can host multiple KV cluster control planes simultaneously, enabling efficient utilisation of the Seed Cluster's compute. The control plane is fully decoupled from the data plane (BM workers with KubeVirt), aligning with AD1 and allowing the data plane to be scaled independently. |
 | AD19 | Customer MCE Master VMs — One Per Zone | The Customer MCE Hub cluster control plane is composed of exactly one master VM sourced from each availability zone, giving 3 masters in total. This guarantees that the ETCD quorum (requiring 2-of-3) survives the complete loss of any single zone. Zone sourcing is enforced at VM placement time — the VM's physical host must be within the target zone's rack boundaries. This satisfies SC3.2 (Uptime) for the customer management plane and aligns with AD9 (Logical AZ Rack Segmentation). |
 | AD20 | Customer MCE Worker VMs — Zone-Aware Distribution | Customer MCE worker VMs are distributed evenly across the three availability zones using `topologySpreadConstraints`. This ensures that MCE workloads (Assisted Installer agents, InfraEnv ISO generation, ArgoCD, Server Scanner) remain operational if a zone is lost, as the surviving two zones retain sufficient worker capacity. Zone affinity is enforced via the same topology labels used for hosted cluster worker VMs (AD7), keeping the scheduling model consistent across the platform. |
+| AD21 | InfraEnv Scoped to `<node-type>-<zone>`, Shared Across Consumers | InfraEnvs are provisioned at `<node-type>-<zone>` granularity (e.g., `32-128-zone-a`), not per hosted cluster. All NodePools requiring the same node type in the same zone draw agents from the same shared pool. The pool is indifferent to which consumer claims an agent — consistent with the scheduler analogy where the scheduler does not distinguish between a new deployment and a dead pod replacement. For BM workers (no VM type dimension), the scope is `bm-<zone>`. This minimises the number of InfraEnvs to manage and allows the warm pool to serve any consumer transparently. |
 
 ---
 
@@ -96,7 +97,7 @@
 | ID | Risk | Mitigation Process | Mitigation Status |
 |---|---|---|---|
 | R1 | Cluster Operators may be degraded when hosted control plan are created but no nodepools (worker nodes) were attached, this may impact other process that lean on cluster operator health as a pre-requisite task | The automation checks whether a hosted cluster has worker nodes, if it does not, it bypasses the cluster operator health check | Not Implemented |
-| R2 | | | |
+| R2 | Seed Cluster failure in a zone causes all KV cluster control planes hosted on it to stop responding. No new KV clusters can be created, no scaling or upgrade operations can run, and zone BM agent inventory stops being managed. Existing tenant workload VMs continue running — the data plane is independent of the control plane. | | Not Implemented |
 | R3 | | | |
 | R4 | | | |
 | R5 | | | |
