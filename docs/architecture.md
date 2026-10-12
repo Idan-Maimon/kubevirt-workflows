@@ -106,7 +106,7 @@
 
 ### 7.1 Static Deployment View
 
-<!-- Diagram to be added -->
+![Deployment View](deployment-view.png)
 
 ### 7.2 Runtime Views
 
