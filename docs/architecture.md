@@ -69,7 +69,7 @@
 | ID | Decision | Reason |
 |---|---|---|
 | AD1 | Hypershift as control plan | Decoupling the control plane (running as pods on the Hub) from the data plane drastically reduces resource overhead and accelerates cluster provisioning times compared to traditional standalone OCP clusters. |
-| AD2 | ODF (Shared) instead of LVMO (Local) Storage | ODF is selected as the primary storage provider. Shared storage is a strict prerequisite to enable KubeVirt Live Migration of VMs across physical hosts during hardware maintenance or failure. |
+| AD2 | NetApp Trident (Shared) instead of LVMO (Local) Storage | NetApp Trident is selected as the primary storage provider. Shared storage is a strict prerequisite to enable KubeVirt Live Migration of VMs across physical hosts during hardware maintenance or failure. |
 | AD3 | VM Lifecycle via Agent-Based Bare Metal Provisioning | Utilizing the `kubevirt/redfish-controller`, KubeVirt VMs are exposed with Virtual BMCs. This allows MCE and the Agent-based Installer to provision and manage VMs identically to physical bare-metal servers, unifying the automation pipeline. |
 | AD4 | Bare metal to Kubevirt rolling migration | Using `kubevirt/redfish-controller` allowing rolling migration by adding VMs to hosted cluster and removing bare metal nodes that later can be added to KV cluster as worker nodes |
 | AD5 | Zero-Trust Tenant Environments (GitOps Only) | Clusters are deployed with strict Read-Only access for tenants. Application and state management is exclusively driven via GitOps (ArgoCD). Banning manual `kubectl` intervention guarantees immutable state, enabling clean cluster restore procedures. |
