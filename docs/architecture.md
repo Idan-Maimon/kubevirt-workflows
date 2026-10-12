@@ -176,3 +176,65 @@
 | L10 | SC2 measurement | Testing | **Define SLA benchmarking framework.** Establish provisioning latency baselines (P50/P95/P99), cluster health check definitions, and AZ failover recovery time targets. Required to measure SC2 (Predictability) and SC3.2 (99.95% uptime) compliance. |
 | L11 | SC2.1 × R1 | Testing | **Run cell boundary stress tests.** Validate cell capacity limits with stress tests at 1:1 CPU/memory allocation (AD16). Confirm the 14 VMs of 8/64 (no overcommitment) test case. Revise or remove the 28 VMs of 8/32 with 2:1 overcommit test case (contradicts AD16). |
 | L12 | Operations | Runbooks | **Design operational runbooks.** Cover: Temporal DLQ handling, fenced node investigation, AZ isolation response, warm pool emergency replenishment, live migration failure escalation, partial deletion recovery. |
+
+---
+
+## 12 :: Glossary
+
+### Infrastructure
+
+| Term | Definition |
+|---|---|
+| **AZ (Availability Zone)** | A logical failure domain composed of a fixed set of physical DC racks (e.g., Racks 1–5 = Zone A). Power, network, and cooling boundaries align with AZ boundaries. |
+| **BM (Bare Metal)** | A physical server node. In this architecture, BM nodes are the foundation for both the Seed Cluster and KV Cluster worker nodes. |
+| **Cell** | A bounded unit of infrastructure capacity. A cell encompasses one KV Cluster, its hosting Seed Cluster resources, and the associated MCE inventory pool. Cell boundaries define the maximum number of VMs allowed before a new cell is created. |
+| **KV Cluster (KubeVirt Cluster)** | A HyperShift hosted cluster whose control plane runs as pods on the Seed Cluster and whose worker nodes are BM machines with KubeVirt enabled. KV clusters are where tenant workload VMs physically run. |
+| **Seed Cluster** | A per-zone bare-metal cluster (UPI-installed) running MCE and HyperShift operators. Hosts the control planes of all KV clusters in its zone and serves as the zone's infrastructure management plane (AD17). |
+| **VM Type** | A specific combination of vCPU count and RAM allocated to a virtual machine, expressed as `CPU/RAM` (e.g., `32/128` = 32 vCPU, 128 GB RAM). VM type is one of the two dimensions (alongside zone) used to index inventory. |
+| **ODF (OpenShift Data Foundation)** | Red Hat's shared storage solution. Required for KubeVirt Live Migration because VMs can only migrate between hosts that share a storage backend (C7, AD2). |
+| **LVMO (LVM Operator)** | Local volume management operator. Evaluated and rejected in favour of ODF because it does not support shared storage and therefore cannot support live migration (AD2). |
+
+### Platform / Operators
+
+| Term | Definition |
+|---|---|
+| **MCE (Multicluster Engine)** | Red Hat's operator for managing multiple OpenShift clusters. Provides HyperShift, Assisted Installer, and agent-based provisioning. In this architecture there are two distinct MCE roles: the Seed Cluster MCE (infrastructure) and the Customer MCE (tenant hub). |
+| **Customer MCE** | The tenant-facing Hub cluster. Manages InfraEnvs, agents, and hosted clusters for one version band of OCP. Masters: one VM per zone; workers: VMs distributed across zones (AD19, AD20). |
+| **HCP (Hosted Control Plane)** | The control plane of a hosted cluster running as pods on the Hub or Seed Cluster, rather than on dedicated master nodes. Enables decoupling of control plane from data plane (AD1, AD18). |
+| **HC (Hosted Cluster)** | A tenant OpenShift cluster whose control plane runs as an HCP on the Customer MCE and whose workers are VMs provisioned via MCE inventory. |
+| **NodePool** | A HyperShift resource defining a group of worker nodes for an HC, targeting a specific zone and VM type. Each HC has three NodePools — one per zone. |
+| **InfraEnv** | An MCE resource that generates a discovery ISO. VMs boot this ISO and register as agents in the MCE inventory. One InfraEnv exists per zone per VM type. |
+| **Agent** | A VM that has booted the InfraEnv discovery ISO, completed hardware discovery, and registered with MCE. Available to be claimed by a NodePool. |
+| **BMH (BareMetalHost)** | A Metal3 resource representing a physical or virtual bare-metal host managed by the Ironic provisioning engine. In this architecture, VMs are exposed as BMHs via the `kubevirt-redfish-controller` (AD3). |
+| **UPI (User Provisioned Infrastructure)** | An OpenShift installation method where the operator manually provisions the underlying servers. Used for Seed Clusters because no automation layer exists yet at that stage. |
+
+### Inventory & Capacity
+
+| Term | Definition |
+|---|---|
+| **Warm Pool** | A stock of pre-provisioned VMs already registered in the MCE inventory as agents, waiting to be claimed. Enables deterministic, low-latency cluster provisioning (AD14). |
+| **Low Watermark** | The minimum acceptable number of available agents in the warm pool. Falling below this threshold triggers the background process to provision replacement VMs. |
+| **High Watermark** | The upper bound for a cell's VM count. Reaching this threshold triggers creation of a new KV Cluster (new cell) within the same zone. |
+| **Server Scanner** | A global service that bridges MCE, the Assisted Installer agent state, and the underlying KubeVirt hypervisors. Tracks the strict lifecycle state of every VM across all KV clusters and zones, indexed by zone and VM type (AD15). |
+| **VM Lifecycle States** | The four states tracked by Server Scanner: **Available** — in warm pool, ready to be claimed; **In-Use** — assigned to a NodePool; **Quarantined** — isolated due to failure or suspicious behaviour; **Draining** — workloads migrating away, pending removal. |
+
+### Orchestration
+
+| Term | Definition |
+|---|---|
+| **Temporal** | Durable workflow orchestration engine used for all imperative, cross-cluster operations. Guarantees transactional safety by committing exclusively to Git (AD13). |
+| **ArgoCD** | GitOps continuous delivery tool. Watches the Git repository and applies desired-state changes to clusters. The sole state applicator; no component applies changes directly to clusters (AD5). |
+| **GitOps / SSOT** | The practice of using Git as the single source of truth for all cluster state. All changes flow through Git commits observed by ArgoCD, ensuring immutable, auditable state (AD5, AD13). |
+| **DLQ (Dead Letter Queue)** | Temporal's mechanism for capturing workflows that have exhausted all retries. Failed operations are sent to the DLQ for manual investigation and remediation. |
+| **Compensating Transaction** | An idempotent operation that reverses or neutralises the effect of a previous step when a workflow fails mid-execution (e.g., releasing a quarantined node back to the warm pool). |
+| **Redfish** | A REST-based DMTF standard API for out-of-band server hardware management. Used by the `kubevirt-redfish-controller` to expose KubeVirt VMs as virtual BMCs, enabling MCE to treat them as bare-metal hosts (AD3). |
+| **IPMI** | Intelligent Platform Management Interface. An alternative hardware management protocol used by Server Scanner alongside Redfish to query VM and host state. |
+
+### Upgrades
+
+| Term | Definition |
+|---|---|
+| **Surge (maxSurge)** | The number of additional worker VMs provisioned before old ones are drained during a rolling upgrade. Set to `> 0` to ensure capacity never drops during an upgrade (AD from Section 4). |
+| **Version Skew** | The difference in OCP minor version between the MCE Hub and the hosted clusters it manages. Constrained by C3 and C4 (MCE supports current OCP version ± up to 3–4 minor versions). |
+| **Version Band** | A range of HC OCP versions managed by a single Customer MCE instance. Multiple MCE instances at different versions coexist to serve hosted clusters across different upgrade stages. |
+| **Konnectivity** | A network tunnelling component that provides connectivity between the hosted cluster control plane (running on the Hub) and the worker nodes. Degradation silently breaks `kubectl exec`, logs, and webhooks. |
