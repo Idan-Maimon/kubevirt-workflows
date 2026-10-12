@@ -179,6 +179,36 @@
 
 ---
 
+## 8 :: Context & Scope
+
+The OCP KubeVirt platform provides a fully automated, GitOps-driven lifecycle for creating, scaling, upgrading, and deleting OpenShift hosted clusters running on KubeVirt infrastructure. The system manages all infrastructure from physical bare-metal racks through to tenant-facing hosted clusters, while enforcing a read-only model for tenants — all changes flow exclusively through Git.
+
+### 8.1 External Actors
+
+| Actor | Interaction with the System |
+|---|---|
+| **RedBull Team** (SRE / Platform Admin) | Operates the platform infrastructure. Creates and manages Seed Clusters, KV Clusters, and Customer MCE instances. Triggers platform-level operations (cell expansion, MCE upgrades, emergency remediation) via Temporal workflows and GitOps pipelines. |
+| **OCP Team** | Enables customer adoption of the GitOps-only model. Since hosted clusters are read-only (AD5), tenants who previously used `kubectl` for day-to-day changes must migrate to Git-based workflows. The OCP Team guides and supports tenants through this transition. |
+| **Tenant / Customer** | Consumes hosted clusters. Requests scale changes and upgrades via the self-service catalog or API. Selects upgrade windows. Has read-only access to the hosted cluster — all mutations must be submitted through Git and applied by ArgoCD. |
+
+### 8.2 External Systems
+
+| System | Role |
+|---|---|
+| **OCP Release Registry** | Source of OCP release images (e.g., `quay.io/openshift-release-dev/ocp-release`). Referenced by HostedCluster and NodePool manifests to pin or upgrade OCP versions. Governed by version skew constraints C3/C4. |
+| **Physical DC / Network** | Provides the bare-metal servers, rack infrastructure, power, and physical network connectivity that underpin all zones and clusters. AZ boundaries (AD9) are derived from physical rack groupings. |
+| **Identity Provider (LDAP / SSO)** | Authenticates SREs, the OCP Team, and tenants. Controls access to the self-service catalog, GitOps repository, and cluster consoles. |
+| **Ticketing System** | Origin of scale and upgrade requests (e.g., Jira, ServiceNow). Requests flow from the ticket into the self-service catalog or directly to Temporal workflows. |
+| **Monitoring & Alerting Stack** | Receives metrics, logs, and alerts from all clusters (Seed, KV, Customer MCE, Hosted Clusters). Provides Grafana dashboards for platform operators and tenants. External to the platform itself but a critical operational dependency. |
+| **DNS** | Provides service discovery for API endpoints, ingress routes, and Redfish BMC addresses across all clusters and zones. Unique Redfish DNS per KubeVirt VM is required for cross-cluster VM live migration (AD11). |
+| **Git Repository** | The single source of truth (AD5, AD13). All desired state — NodePool manifests, BMH definitions, NMState configs — lives here. Temporal writes to it; ArgoCD reads from it and applies to clusters. External teams interact with the platform by submitting pull requests. |
+
+### 8.3 Context Diagram
+
+<!-- Diagram to be added -->
+
+---
+
 ## 12 :: Glossary
 
 ### Infrastructure
