@@ -188,7 +188,7 @@ The OCP KubeVirt platform provides a fully automated, GitOps-driven lifecycle fo
 | Actor | Interaction with the System |
 |---|---|
 | **RedBull Team** (SRE / Platform Admin) | Operates the platform infrastructure. Creates and manages Seed Clusters, KV Clusters, and Customer MCE instances. Triggers platform-level operations (cell expansion, MCE upgrades, emergency remediation) via Temporal workflows and GitOps pipelines. |
-| **OCP Team** | Enables customer adoption of the GitOps-only model. Since hosted clusters are read-only (AD5), tenants who previously used `kubectl` for day-to-day changes must migrate to Git-based workflows. The OCP Team guides and supports tenants through this transition. |
+| **OCP Team** | Responsible for workload and OCP cluster optimisations, and for adapting customer workloads to Kubernetes. Enables customer adoption of the GitOps-only model — since hosted clusters are read-only (AD5), tenants who previously used `kubectl` for day-to-day changes must migrate to Git-based workflows. The OCP Team guides and supports tenants through this transition and ensures workloads are correctly configured to run on the hosted cluster platform. |
 | **Tenant / Customer** | Consumes hosted clusters. Requests scale changes and upgrades via the self-service catalog or API. Selects upgrade windows. Has read-only access to the hosted cluster — all mutations must be submitted through Git and applied by ArgoCD. |
 
 ### 8.2 External Systems
