@@ -1,4 +1,4 @@
-# Flow: Create Seed Cluster
+# Procedure: Create Seed Cluster
 
 **Type:** Infrastructure Setup
 
