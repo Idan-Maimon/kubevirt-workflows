@@ -455,6 +455,93 @@ WORKFLOWS["04-update-nodepool"] = dict(
       ("ctl","dn","both","If demand fell","Agents unbind and wait in the pool. Nothing is destroyed."),
     ])
 
+WORKFLOWS["19-remove-server-from-nodepool"] = dict(
+    title="19 :: Remove Server from NodePool",
+    subtitle="A scale-down of update-nodepool by one worker: mark the Machine, lower the count, "
+             "let CAPI delete what was marked, then release the machine. Steps marked (to add) "
+             "are not on the branch yet.",
+    nodes={"cust": N(30, 36, "Wingman", "tenant or SRE"),
+           "tmp":  N(400, 36, "Temporal", "update-nodepool", 200),
+           "scan": N(800, 36, "server-scan", "fleet inventory"),
+           "ctl":  N(30, 172, "Inventory Controller", "sees demand drop"),
+           "git":  GIT,
+           "kv":   N(800, 172, "KV Cluster", "the VM"),
+           "hc":   N(30, 300, "Hosted cluster", "the Node drains"),
+           "argo": ARGO,
+           "capi": N(800, 300, "CAPI MachineSet", "deletes marked first"),
+           "hub":  N(380, 430, "MCE Hub", "NodePool · Machine · Agent", 240)},
+    group=None,
+    steps=[
+      ("cust","tmp","both","Ask for one fewer","Named: this node. Any: the NodePool's policy or CAPI chooses.",
+       {"call":"POST /workflows/server-lifecycle/update-nodepool",
+        "send":"{ \"mce_cluster\": \"ocp4-prod-mce-bat-yam-a\",\n"
+               "  \"cluster\":     \"ocp4-prod-payments-bat-yam-a\",\n"
+               "  \"nodepool\":    \"<nodepool>\",\n"
+               "  \"replicas\":    <current - 1>,\n"
+               "  \"node_name\":   \"<node>\"        // Named mode only (to add)\n}",
+        "warn":"The count is absolute, never a delta. Workflow id update-nodepool-<cluster>:\n"
+               "one change per cluster at a time, and a 409 while upgrade-cluster runs."}),
+
+      ("tmp","git","both","Read day1","The NodePool's replicas on main.",
+       {"call":"clone day1 main, read sites/<site>/mces/<mce>/hostedClusters/<cluster>.yaml",
+        "recv":"nodepool[<name>].replicas, and the file's blob id for the compare-and-set",
+        "warn":"Day1 and the live NodePools must agree both ways, or the run stops with\n"
+               "nothing written."}),
+
+      ("tmp","hub","both","Read the NodePool","Refuse autoscaling, a rollout, or a count below the floor.",
+       {"call":"get NodePool, its MachineSet and its Machines",
+        "warn":"Refused with nothing written: Machines across two MachineSets (a rollout),\n"
+               "a Machine already deleting, another run's mark, Machines != replicas.\n"
+               "The floor and the autoscaling refusal are (to add)."}),
+
+      ("tmp","hub","both","Named: find the Machine","Node -> Agent -> AgentMachine -> Machine. (to add)",
+       {"call":"Node.spec.providerID = agent://<agent>\n"
+               "Agent -> AgentMachine -> Machine -> MachineSet -> NodePool",
+        "warn":"Refuse if the MachineSet holds a CAPI-unhealthy Machine. CAPI 4.18 ties a\n"
+               "marked Machine with an unhealthy one and breaks the tie by name, so the\n"
+               "named node would not be guaranteed to go."}),
+
+      ("tmp","hub","both","Mark the Machine","Before the commit, and read back.",
+       {"call":"annotate Machine  cluster.x-k8s.io/delete-machine=<workflow id>",
+        "warn":"Mark first, then lower the count. The other way round, CAPI may delete a\n"
+               "different Machine before the mark lands. Any mode with no policy marks\n"
+               "nothing and CAPI picks at random, unhealthy Machines first."}),
+
+      ("tmp","git","both","Commit replicas - 1","One commit to main, compare-and-set on the file.",
+       {"call":"commit nodepool(<cluster>): <nodepool> replicas N -> N-1, push to main",
+        "warn":"If the file moved, or the push is refused, the marks come off and the run\n"
+               "fails. Once the commit has landed the marks are never removed."}),
+
+      ("tmp","argo","both","Sync to that commit","Exactly that revision, only the moved NodePool out of sync."),
+      ("argo","hub","both","NodePool shows N-1","Read back."),
+
+      ("hub","capi","both","CAPI deletes the marked Machine","Checked: an unmarked Machine deleting fails the run.",
+       {"warn":"Never delete the Machine directly. The MachineSet would replace it at once,\n"
+               "and the next scale-down would remove a second node."}),
+
+      ("capi","hc","both","Drain the Node","Cordon and evict. Bounded wait. (to add)",
+       {"warn":"A PodDisruptionBudget can block the drain. The wait fails naming the pods\n"
+               "and the budgets involved."}),
+
+      ("hub","hub","both","Agent unbound","The provider's pre-terminate hook releases it. (to add)"),
+
+      ("tmp","hub","both","Remove from the MCE","remove-server-from-mce as a child. (to add)",
+       {"call":"child: remove-server-from-mce",
+        "warn":"Power off, BareMetalHost, NMStateConfig, Agent, PXE map. Without this the\n"
+               "machine returns to the pool as a free Agent with the last tenant's disk (AD23)."}),
+
+      ("tmp","kv","VM","Destroy the VM","By name and MAC. (to add)",
+       {"call":"delete VirtualMachine <name> on its KV cluster",
+        "warn":"Name AND MAC: if someone replaced the VM, the MAC differs and the VM is\n"
+               "left alone."}),
+
+      ("hub","scan","BM","Back to server-scan","Reinstalled from scratch by the next install that draws it. (to add)",
+       {"warn":"Reinstalling overwrites the install disk only. Whether bare metal is also\n"
+               "wiped is still open (D5)."}),
+
+      ("hub","ctl","both","Demand dropped","The pool's target falls; nothing is ordered back (AD26)."),
+    ])
+
 WORKFLOWS["05-delete-hosted-cluster"] = dict(
     title="05 :: Delete Hosted Cluster",
     subtitle="Order matters more here than anywhere else. Each step exists because the next "

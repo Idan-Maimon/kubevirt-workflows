@@ -1,5 +1,7 @@
 # 19 :: Remove Server from NodePool
 
+**Animation:** [`../animations/19-remove-server-from-nodepool.html`](../animations/19-remove-server-from-nodepool.html)
+
 | | |
 |---|---|
 | **Trigger** | A tenant (through Wingman) or an SRE: shrink one NodePool by one worker |
