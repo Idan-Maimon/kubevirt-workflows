@@ -82,7 +82,7 @@ A worker a tenant releases is never handed to another tenant as-is (AD23).
 
 | | |
 |---|---|
-| Read in-flight | Temporal: open runs on the pool's slots, `add-server-to-mce-<mce>_<infraEnv>_<slot>` |
+| Read in-flight | Temporal: open runs on the pool's slots, `add-server-to-mce-<mce>_<infraEnv>_<slot>`. For a VM pool the run also builds the VM, through its `create-vm` child |
 | Ask for more | `POST /workflows/server-lifecycle/add-server-to-mce` with `count` |
 | Limits | At most 20 per call, at most 15 open per pool, 100 slots |
 
@@ -132,9 +132,7 @@ pools:
 
 ## Open
 
-- **VM pools have no builder.** herzi orders `add-server-to-mce`, which installs a machine
-  server-scan already lists. For a VM pool that machine must first be created by `create-vm`,
-  and nothing calls `create-vm` today. Either herzi orders `create-vm` for VM pools, or
-  `add-server-to-mce` starts `create-vm` as a child for a VM InfraEnv. The workflows repo
-  names the second as the planned step; it is not built.
+- **VM pools: decided, not built.** For a VM InfraEnv, `add-server-to-mce` starts `create-vm`
+  as an awaited child and installs the VM it creates ([vm-placement.md](vm-placement.md)).
+  herzi keeps ordering through the one route and needs no change.
 - **Live rollout.** herzi has not run against a real hub, and every pool defaults to dry run.

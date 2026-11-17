@@ -79,14 +79,16 @@ Read from the Seed:
 | `hypershift.openshift.io/v1beta1 HostedCluster` | `metadata.name`, `metadata.creationTimestamp`, `status.conditions` |
 | `hypershift.openshift.io/v1beta1 NodePool` | `spec.clusterName`, `spec.replicas`, `status.replicas`, `status.conditions` |
 
-Read from each KV cluster's `kv-capacity` agent, `GET /v1/capacity`: the **same report
-`create-vm` ranks on**, so placement and growth count used CPU the same way.
+Read from each KV cluster through its admin kubeconfig, which lives on the Seed beside the
+cluster's hosted control plane. Capacity is computed with **the same rules `create-vm`'s
+placement uses** ([vm-placement.md](vm-placement.md), "Capacity"), so placement and growth count
+used CPU the same way (AD31).
 
-| Field | Used for |
+| Read | Used for |
 |---|---|
-| Schedulable nodes with allocatable CPU | `nodeCpu`, the cluster's capacity |
-| Requests of Pending and Running pods | `used` |
-| Halted VMs' reservations | `used`. kubevirt-redfish will start them |
+| Nodes, Ready and not cordoned, with allocatable CPU | `nodeCpu`, the cluster's capacity |
+| Requests of every non-finished pod on those nodes | `used` |
+| Every Halted VM, in any namespace, at its pod's request (vCPU × 15/16, memory + 1 GiB) | `used`. kubevirt-redfish will start them |
 | VMs present | Whether the cluster holds any VM |
 
 ---
@@ -104,7 +106,8 @@ holdsVms(C)      C has at least one VM
 active           the oldest C with replicas(C) < maxNodes
 standby          every C after active where not holdsVms(C)
 
-target(C)        ceil( used(C) × (1 + freeCpuPercent/100) / nodeCpu(C) )
+largestVm        CPU request of the largest VM size offered
+target(C)        ceil( (used(C) + largestVm) / (1 − freeCpuPercent/100) / nodeCpu(C) )
                  bounded to [standbyWorkers, maxNodes]
 ```
 
@@ -115,6 +118,12 @@ reaches its buffer.
 
 **Rule 5.2.** `used` MUST include Halted VMs, as `create-vm`'s placement does. Otherwise
 the controller sees room that placement has already promised.
+
+**Rule 5.2a.** The target MUST divide by `1 − freeCpuPercent`, the same ceiling placement
+applies (fill after placing ≤ `1 − buffer`). Multiplying `used` by `1 + freeCpuPercent` instead
+lets a cluster reach about 87% while placement refuses past 85%, so VMs are turned away while
+the controller sees nothing to grow. Adding the largest VM keeps room for the next request
+instead of growing only after it is refused.
 
 **Rule 5.3.** Free CPU is meaningful as whole empty nodes only because clusters bin-pack
 (AD30). The controller SHOULD alert when a cluster's free CPU is at target but it has no
@@ -158,7 +167,7 @@ could be read, the loop takes no action.
 evaluation cycle is the retry.
 
 **7.2** `create-vm` returning `NoKvClusterFitsError` means this controller has fallen behind
-(AD29). It is an alert, not a condition the controller acts on separately.
+(AD27). It is an alert, not a condition the controller acts on separately.
 
 **7.3** A cluster that cannot be read is excluded for that pass only. Nothing is retained.
 
@@ -199,7 +208,7 @@ evaluation cycle is the retry.
 |---|---|---|
 | Seed | `hostedclusters`, `nodepools` | get, list, watch |
 | Seed | `leases` in its namespace | get, create, update |
-| Each KV cluster | `kv-capacity` agent, with its fleet token | `GET /v1/capacity` |
+| Each KV cluster | Nodes, pods, VirtualMachines, VirtualMachineInstances, through the admin kubeconfig on the Seed | get, list |
 | Orchestrator API | `update-nodepool`, `provision-cluster` | start |
 
 The controller holds no credential that can write to a KV cluster. Every change goes through
@@ -211,9 +220,9 @@ a workflow and Git.
 
 | # | Item |
 |---|---|
-| O1 | `update-nodepool` does not exist in the workflows repo yet. Until it does, the controller has no way to grow a cluster |
+| O1 | `update-nodepool` exists on the branch `feat/update-nodepool`, not yet merged. It addresses a cluster's NodePools by name or by kind, with id `update-nodepool-<cluster>` (§6.3 should follow) |
 | O2 | `provision-cluster` waits for a human merge. A standby cluster therefore needs a person to merge it, which the lead time of one standby must absorb |
 | O3 | A zone holding KV clusters of more than one server type: one active/standby chain per server type, or one per zone |
 | O4 | The capacity policy file's path and owner in the platform repo |
-| O5 | `HEADROOM_BUFFER_PERCENT` in `create-vm` defaults to 30 and is set per deployment, not read from the policy file (AD31) |
+| O5 | `HEADROOM_BUFFER_PERCENT` in `create-vm` defaults to 30 and is set per KV cluster worker, not rendered from the policy file (AD31) |
 | O6 | `HighNodeUtilization` and `CompactAndScale` are not confirmed on any KV cluster (AD30) |
