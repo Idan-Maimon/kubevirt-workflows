@@ -62,6 +62,7 @@ because both end as an Agent.
 | 03 | [Create Hosted Cluster](03-create-hosted-cluster.md) | Customer |
 | 04 | [Update NodePool](04-update-nodepool.md) | Customer |
 | 05 | [Delete Hosted Cluster](05-delete-hosted-cluster.md) | Customer |
+| 19 | [Remove Server from NodePool](19-remove-server-from-nodepool.md) | Customer or SRE. A scale-down of 04, by name or any |
 
 ## KubeVirt clusters — the same workflows, with the Seed as the hub
 
