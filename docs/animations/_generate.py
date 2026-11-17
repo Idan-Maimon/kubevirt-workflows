@@ -32,8 +32,22 @@ HUB  = N(380, 430, "MCE Hub",           "HostedCluster + NodePools", 240)
 SEED = N(800, 430, "Seed Cluster",      "hosts KV control planes")
 
 
-def page(title, subtitle, nodes, group, steps):
-    """`group` may be None, one dict, or a list of dicts."""
+def page(title, subtitle, nodes, group, steps, mode_labels=("Pool", "Bare metal", "Virtual"), tags=None):
+    html = _page(title, subtitle, nodes, group, steps, mode_labels)
+    if tags:
+        badge = """'<span class="tag '+s.b+'">'+s.b+'</span>'"""
+        assert badge in html
+        html = html.replace(badge, """'<span class="tag '+s.b+'">'+(TAGS[s.b]||s.b)+'</span>'""") \
+                   .replace("const HAS_MODES =", "const TAGS = " + json.dumps(tags) + ";\nconst HAS_MODES =", 1)
+    return html
+
+
+def _page(title, subtitle, nodes, group, steps, mode_labels):
+    """`group` may be None, one dict, or a list of dicts. `mode_labels` names the
+    two-way toggle: (caption, label of the "BM" steps, label of the "VM" steps).
+    `tags` optionally renames the badge shown on a mode-specific step, e.g.
+    {"BM": "4.19+"}. Applied only when given, so pages without it render exactly
+    as before."""
     groups = group if isinstance(group, list) else ([group] if group else [])
     modes = any(s[2] != "both" for s in steps)
     return TEMPLATE \
@@ -42,7 +56,10 @@ def page(title, subtitle, nodes, group, steps):
         .replace("__NODES__", json.dumps(nodes, indent=2)) \
         .replace("__GROUPS__", json.dumps(groups, indent=2)) \
         .replace("__STEPS__", json.dumps(steps, indent=2)) \
-        .replace("__MODES__", "true" if modes else "false")
+        .replace("__MODES__", "true" if modes else "false") \
+        .replace("__MODE_CAPTION__", mode_labels[0]) \
+        .replace("__MODE_A__", mode_labels[1]) \
+        .replace("__MODE_B__", mode_labels[2])
 
 
 # --------------------------------------------------------------------------
@@ -542,6 +559,120 @@ WORKFLOWS["19-remove-server-from-nodepool"] = dict(
       ("hub","ctl","both","Demand dropped","The pool's target falls; nothing is ordered back (AD26)."),
     ])
 
+WORKFLOWS["20-remove-node-flow-draft"] = dict(
+    title="20 :: Remove Nodes: Customer Picks, or Any (DRAFT, for review)",
+    subtitle="Two ways to remove: the customer picks the nodes (offered from control plane 4.19, "
+             "CAPI 1.9+), or asks for any N and the workflow picks (offered on every version). "
+             "The UI offers; the workflow enforces. Only the NodePool count goes through Git; "
+             "Machines and Agents are changed directly on the MCE's API (AD22).",
+    mode_labels=("Who chooses", "Customer picks", "Any node"),
+    tags={"BM": "picked", "VM": "any"},
+    nodes={"cust": N(30, 36, "Wingman", "tenant or SRE"),
+           "tmp":  N(400, 36, "Temporal", "update-nodepool", 200),
+           "scan": N(800, 36, "server-scan", "fleet inventory"),
+           "git":  N(30, 172, "Git (day1)", "NodePool count only"),
+           "kv":   N(800, 172, "KV Cluster", "VMs destroyed"),
+           "argo": N(30, 300, "ArgoCD", "applies the NodePool"),
+           "capi": N(800, 300, "CAPI MachineSet", "ranks, deletes top N"),
+           "ctl":  N(30, 430, "Inventory Controller", "sees demand drop"),
+           "hub":  N(380, 430, "MCE Hub API", "Machines · Agents: direct", 240),
+           "hc":   N(800, 430, "Hosted cluster", "Nodes drain")},
+    group=None,
+    steps=[
+      ("cust","tmp","both","Ask what removal allows","Wingman asks the orchestrator, before drawing the form.",
+       {"call":"GET /workflows/server-lifecycle/removal-options?cluster=<cluster>   (synchronous, like upgrade-targets)",
+        "warn":"Wingman renders the form from this answer and carries no version rule of its own,\n"
+               "so the UI and the workflow can never disagree."}),
+
+      ("tmp","hub","both","Read the running CAPI","The control plane version CAPI actually runs on.",
+       {"call":"HostedCluster status: running control plane version\n"
+               "HostedCluster annotation: hypershift.openshift.io/capi-manager-image (an override)",
+        "warn":"Not day1's mastertag: that is the desired version. During an upgrade the control\n"
+               "plane, and with it CAPI, may still be on the old one."}),
+
+      ("tmp","cust","BM","Picking is offered only on 4.19+","CAPI 1.9+: a marked Machine (75) beats an unhealthy one (50).",
+       {"recv":"4.19+:  { \"choose_node\": true,  \"any\": true }\n"
+               "4.18-:  { \"choose_node\": false, \"any\": true,\n"
+               "          \"reason\": \"choosing a node needs control plane 4.19 or later\" }",
+        "warn":"On 4.18 and earlier CAPI ties a marked Machine with an unhealthy one (50 = 50) and\n"
+               "breaks the tie by name, so a picked node is not guaranteed to go. The option is\n"
+               "shown disabled with the reason, and the customer uses 'any node'.\n"
+               "Fails safe: a 4.18 cluster with a CAPI override is under-offered, never over-promised."}),
+      ("tmp","cust","VM","Any node is offered on every version","The workflow picks, so CAPI's version does not matter.",
+       {"recv":"{ \"choose_node\": <true on 4.19+>, \"any\": true }"}),
+
+      ("cust","tmp","BM","Remove these nodes","node_name(s) plus the new total.",
+       {"send":"{ \"cluster\": \"<cluster>\", \"nodepool\": \"<np>\", \"replicas\": 12,\n"
+               "  \"node_names\": [\"<node-a>\", \"<node-b>\"] }"}),
+      ("cust","tmp","VM","Remove any N","Only the new total.",
+       {"send":"{ \"cluster\": \"<cluster>\", \"nodepool\": \"<np>\", \"replicas\": 12 }"}),
+
+      ("tmp","tmp","both","Join the running workflow; latest wins","A new total replaces the one waiting. Settle 60 s.",
+       {"call":"update-with-start on update-nodepool-<cluster>",
+        "warn":"18 -> 12, then 14, then 10, thirty seconds apart: one change, 18 -> 10, one commit.\n"
+               "Nothing is added and then destroyed."}),
+
+      ("tmp","tmp","BM","Enforce the same rule","node_names on CAPI < 1.9 is refused here too.",
+       {"warn":"The orchestrator API has no authentication and the UI can be stale (a cluster\n"
+               "mid-upgrade), so the workflow is the judge. Wingman shows its refusal verbatim."}),
+
+      ("tmp","git","both","Read day1","The NodePool's count in Git.",
+       {"warn":"Git holds the desired count and nothing else about the machines (AD22)."}),
+      ("tmp","hub","both","Read the live NodePool","Direct API. Must agree with day1; refuse autoscaling, a rollout, a deleting Machine, the floor."),
+
+      ("tmp","hub","BM","Find the named Machines","Direct API: Node -> Agent -> AgentMachine -> Machine.",
+       {"call":"Node.spec.providerID = agent://<agent>  ->  AgentMachine  ->  Machine  ->  MachineSet",
+        "warn":"Each must belong to the requested NodePool's MachineSet."}),
+      ("tmp","hub","VM","The workflow chooses","Unhealthy first by name, then the policy or a random pick. Any version.",
+       {"warn":"Unhealthy includes a Machine still installing (no nodeRef) and a Node reporting\n"
+               "Ready=False. Putting them first makes the marked set CAPI's own top set, on 4.18\n"
+               "as on 4.19+. That is why 'any node' needs no version check."}),
+
+      ("tmp","hub","both","Mark, and record each Agent","Direct API, not Git: annotation on the Machine; Agent and server saved in the run.",
+       {"call":"annotate Machine  cluster.x-k8s.io/delete-machine=<workflow id>\n"
+               "record  Machine -> agent://<agent> -> server name",
+        "warn":"Recorded now, while the Machine still exists: it is gone after the scale-down."}),
+
+      ("tmp","hub","both","Label the Agents","Direct API, not Git: redbull.io/uninstalling, before the commit.",
+       {"warn":"Harmless on a bound Agent: the provider reads a NodePool's selector only when it\n"
+               "picks a FREE Agent. Once released, a labelled Agent cannot be claimed by any other\n"
+               "NodePool on the hub. Needs the NodePool selector (DoesNotExist) in the chart.\n"
+               "On 4.18 with 'any node', label every Machine CAPI could pick, and unlabel the\n"
+               "survivors once the deleting set is known."}),
+
+      ("tmp","git","both","Newest target? Then commit","The only Git write: the NodePool's count, compare-and-set, one batch.",
+       {"call":"commit nodepool(<cluster>): <np> replicas 18 -> 16   (batch of 2 per NodePool)",
+        "warn":"Batches bound the capacity dip, as maxUnavailable does for upgrades. Each batch\n"
+               "is a full mark -> commit -> check -> release step."}),
+
+      ("tmp","argo","both","Sync to that commit","ArgoCD applies the NodePool's new count."),
+      ("argo","hub","both","NodePool updated","The MCE's NodePool now wants fewer workers."),
+
+      ("hub","capi","BM","CAPI deletes the picked nodes","4.19+: 100 deleting, 75 marked, 50 unhealthy, 20 healthy.",
+       {"warn":"A Machine already deleting (100) still outranks the mark, on every version."}),
+      ("hub","capi","VM","CAPI deletes the marked set","4.19+: 75 > 50 > 20.  4.18-: 50 marked = 50 unhealthy, ties by name.",
+       {"warn":"Either way the marked set is CAPI's top set, because the workflow marked the\n"
+               "unhealthy Machines first. A Machine already deleting (100) still outranks both."}),
+
+      ("tmp","hub","both","Check the deleting set","Direct API: deleting == marked. Otherwise follow what is deleting.",
+       {"warn":"An unmarked Machine deleting (a repair started in between): follow it, label its\n"
+               "Agent, unlabel the Machine left behind, and report the difference."}),
+
+      ("capi","hc","both","Drain the batch","In parallel, each with its own deadline."),
+      ("hub","hub","both","Agents unbound","Held out of the pool by the label."),
+
+      ("tmp","hub","both","Release, one child per server","Direct API, outside the cluster's lock: remove-server-from-mce.",
+       {"call":"child per server: remove-server-from-mce-<server>",
+        "warn":"One stuck machine does not hold the others, and the cluster can take its next\n"
+               "change while machines are still being released."}),
+
+      ("tmp","kv","both","VM destroyed; bare metal reinstalled","AD23: never reused as it is.",
+       {"warn":"VM: deleted by name and MAC. Bare metal: back to server-scan, reinstalled from\n"
+               "scratch by the next install that draws it."}),
+
+      ("hub","ctl","both","Demand dropped","Nothing is ordered back (AD26)."),
+    ])
+
 WORKFLOWS["05-delete-hosted-cluster"] = dict(
     title="05 :: Delete Hosted Cluster",
     subtitle="Order matters more here than anywhere else. Each step exists because the next "
@@ -883,10 +1014,10 @@ TEMPLATE = r"""<!DOCTYPE html>
   <button id="next">Next</button>
   <button id="rst">Restart</button>
   <span id="modes" style="display:none">
-    <span class="caption">Pool</span>
+    <span class="caption">__MODE_CAPTION__</span>
     <span class="seg">
-      <button id="mBM" class="sel">Bare metal</button>
-      <button id="mVM">Virtual</button>
+      <button id="mBM" class="sel">__MODE_A__</button>
+      <button id="mVM">__MODE_B__</button>
     </span>
   </span>
   <div class="spacer"></div>
@@ -1090,7 +1221,9 @@ render();
 if __name__ == "__main__":
     for name, cfg in WORKFLOWS.items():
         html = page(cfg["title"], cfg["subtitle"], cfg["nodes"],
-                    cfg["group"], cfg["steps"])
+                    cfg["group"], cfg["steps"],
+                    cfg.get("mode_labels", ("Pool", "Bare metal", "Virtual")),
+                    cfg.get("tags"))
         (HERE / f"{name}.html").write_text(html, encoding="utf-8")
         print(f"wrote {name}.html")
     print(f"\n{len(WORKFLOWS)} animations generated.")
