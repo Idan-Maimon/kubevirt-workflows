@@ -1,0 +1,178 @@
+# Naming, zones and labels (DRAFT, for discussion)
+
+How clusters, nodes and InfraEnvs are named, how a server's zone is known, how a NodePool draws
+only the Agents of its zone, and how a machine that has served a cluster is kept out of the pool
+and collected.
+
+---
+
+## 1. Names
+
+All names are lowercase (Kubernetes names must be).
+
+| Object | Pattern | Examples |
+|---|---|---|
+| **Cluster** | `ocp4-<lifecycle>-<flavor>-<site>-<id>` | `ocp4-prod-eck-five-a` |
+| **Node** (VM or bare metal) | `ocp-<flavor>-<bm/cpu>-<site>-<id>` | `ocp-c200-metal-five-abc123`<br>`ocp-c200-32-five-ffffff` |
+| **InfraEnv** | `<flavor>-<bm/cpu>-<site>-<zone>` | `c200-metal-five-az1`<br>`c200-metal-five-az3`<br>`c200-32-five-az1` |
+
+| Segment | Meaning |
+|---|---|
+| `lifecycle` | `prod`, `prep` or `test` |
+| `flavor` | Cluster: the cluster's flavor. Node and InfraEnv: the server configuration, with an optional variant letter (below) |
+| `bm/cpu` | `metal` for bare metal, or the VM's vCPU count |
+| `site` | The physical site |
+| `zone` | The availability zone. In InfraEnv names only, never in node names (section 2) |
+| `id` | Cluster: a sequence letter, `a` to `z`. Node: 6 hex characters |
+
+### Flavor variants
+
+| Variant | Meaning | Example |
+|---|---|---|
+| *(none)* | Standard configuration | `ocp-c200-metal-five-abc123` |
+| `n` | Extra NIC | `ocp-c200n-metal-five-abc123` |
+| `d` | Extra disk | `ocp-c200d-metal-five-abc123` |
+| `x` | Other deviation (to be defined) | `ocp-c200x-metal-five-abc123` |
+
+---
+
+## 2. Zones
+
+**A server's zone is physical.** It comes from the Cisco ACI leaf the server is cabled to, and
+server-scan collects and stores it. server-scan is the zone's only source of truth.
+
+**The zone is not part of a node's name.** A name is fixed when the server is provisioned; a zone
+changes if the server is recabled to another leaf. server-scan picks up the new zone on its next
+collection, and nothing is renamed.
+
+| Machine | Where its zone comes from |
+|---|---|
+| Bare metal | server-scan, from the ACI leaf |
+| VM | Its KV cluster's zone. server-scan records it when it scans the KV clusters |
+
+---
+
+## 3. How a server reaches the right zone
+
+```
+ACI leaf -> server-scan: zone = az1
+             |
+             v  draw: name ocp-c200-metal-five-*  AND  server-scan zone = az1
+add-server-to-mce installs the server into InfraEnv c200-metal-five-az1
+             |
+             v  the host boots that InfraEnv's discovery image
+Agent registers, labelled by the InfraEnv (section 4)
+             |
+             v
+the az1 NodePool selects Agents by those labels, and claims only az1 Agents
+```
+
+| # | Rule | Owner |
+|---|---|---|
+| 1 | **The draw filters by name and by zone.** InfraEnv `<flavor>-<bm/cpu>-<site>-<zone>` draws servers named `ocp-<flavor>-<bm/cpu>-<site>-*` whose server-scan zone is `<zone>`. Zones of one site never share servers | `add-server-to-mce`, server-scan |
+| 2 | **server-scan's availability query filters by zone.** | server-scan (to confirm, or add) |
+| 3 | **A VM needs no draw.** `create-vm` builds it on a KV cluster in the zone, and the install puts exactly that VM into the zone's InfraEnv (AD29) | `add-server-to-mce`, `create-vm` |
+| 4 | **Check the zone after registration.** Once the Agent registers, the install run checks that server-scan's zone for the server equals the InfraEnv's zone, and rolls back if not | `add-server-to-mce` |
+
+---
+
+## 4. Labels
+
+NodePools never read node names. They select Agents by label, and every Agent is labelled by the
+InfraEnv it registers from.
+
+### InfraEnv: the labels its Agents receive
+
+assisted-service always stamps `infraenvs.agent-install.openshift.io: <InfraEnv name>`. Each InfraEnv
+also lists every part of its name as an explicit label:
+
+```yaml
+# InfraEnv c200-metal-five-az1
+spec:
+  agentLabels:
+    redbull.io/flavor: c200
+    redbull.io/size: metal            # or the vCPU count, e.g. "32"
+    redbull.io/site: five
+    topology.kubernetes.io/zone: az1
+```
+
+### NodePool: what it selects, and what its Nodes carry
+
+```yaml
+# NodePool of a cluster, for az1
+spec:
+  platform:
+    agent:
+      agentLabelSelector:
+        matchLabels:
+          redbull.io/flavor: c200
+          redbull.io/size: metal
+          topology.kubernetes.io/zone: az1
+        matchExpressions:
+          - { key: redbull.io/claimed, operator: DoesNotExist }
+  nodeLabels:
+    topology.kubernetes.io/zone: az1
+```
+
+| Label | Why |
+|---|---|
+| `redbull.io/flavor`, `redbull.io/size` | A NodePool selects a server configuration and size explicitly. "c200 metal across all zones" is `flavor=c200, size=metal`, not a name prefix, which would also sweep in other sizes and variants |
+| `topology.kubernetes.io/zone` on the Agent | Each zone's NodePool claims only Agents of its zone |
+| `topology.kubernetes.io/zone` on the Node (`nodeLabels`) | Tenant workloads spread across zones with `topologySpreadConstraints` (AD7) |
+| `redbull.io/claimed DoesNotExist` | An Agent that has ever served a cluster is never claimed again by any NodePool (section 5). Adding it changes the NodePool's template hash, so confirm the NodePool is `InPlace` before rollout |
+
+---
+
+## 5. Claimed Agents and garbage collection
+
+A machine that has served a cluster is never reused as it is (AD23). Instead of each workflow
+releasing the machines it frees, **every Agent is marked when it is claimed, and the Inventory
+Controller collects marked Agents once they are free.**
+
+```
+Agent bound to a cluster  ->  label redbull.io/claimed=true  (at claim time)
+             |
+             v  the machine leaves the cluster, by any path
+Agent free again, still labelled  ->  no NodePool can claim it (selector, section 4)
+             |
+             v
+Inventory Controller: claimed + unbound  ->  remove-server-from-mce, then destroy a VM
+```
+
+| # | Rule | Owner |
+|---|---|---|
+| 1 | **A label, not an annotation.** A NodePool's `agentLabelSelector` selects labels only | — |
+| 2 | **Marked at claim time,** when an Agent's `spec.clusterDeploymentName` goes from empty to set, by an admission policy on the MCE (Kyverno, already shipped to MCEs through day2). The mark exists long before the Agent is free again, so there is no race | Kyverno policy |
+| 3 | **Backstop:** the Inventory Controller labels any bound Agent it finds unmarked, and alerts | Inventory Controller |
+| 4 | **Every NodePool excludes the label** (`redbull.io/claimed DoesNotExist`). The provider applies the selector only when it picks a free Agent, so a bound Agent's running node is not affected | hostedclusters-setup chart |
+| 5 | **Collect:** Agents labelled `claimed`, unbound (no `clusterDeploymentName`, no AgentMachine), not deleting, unchanged for a grace period | Inventory Controller |
+| 6 | **Act through a workflow:** start `remove-server-from-mce-<server>`, then destroy a VM; bare metal returns to server-scan for reinstall. The id is the server, so a repeat, or `uninstall-server-from-hc`'s own child, is a 409, not a duplicate | Inventory Controller |
+| 7 | **Bounded parallelism,** so a deleted cluster does not start all its removals at once | Inventory Controller |
+| 8 | **Marked free Agents are not spare.** The Inventory Controller does not count them as claimable, so it does not under-order while they wait | Inventory Controller |
+| 9 | **Backfill at rollout:** label every currently bound Agent before turning on the NodePool exclusion | Rollout |
+
+**What this covers:** every path that frees a machine: a scale-down, CAPI choosing another
+Machine, a repair replacing a node, `uninstall-server-from-hc`, a deleted cluster.
+
+**What it simplifies:** `update-nodepool` no longer releases machines. A scale-down marks the
+Machine only when the customer picked it, commits the count, syncs, and checks the deleting set.
+
+**What it changes in the architecture:** AD26 says the Inventory Controller only adds. Collecting
+used machines is a new responsibility, to be stated as an amendment or a new AD.
+
+**One label instead of two:** `claimed` replaces `redbull.io/uninstalling`, since every machine
+being uninstalled was claimed first.
+
+---
+
+## 6. Open items
+
+| # | Item |
+|---|---|
+| 1 | Definition of variant `x` |
+| 2 | Whether server-scan's availability query can already filter by zone |
+| 3 | The hostedclusters-setup chart rendering `agentLabels`, the selector and `nodeLabels` |
+| 4 | The Kyverno policy marking Agents at claim time |
+| 5 | The Inventory Controller's collection loop (herzi) |
+| 6 | AD26 amendment, or a new AD, for collection |
+| 7 | Updating architecture §9 to this convention once agreed |
