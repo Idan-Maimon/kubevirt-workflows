@@ -78,10 +78,27 @@ the az1 NodePool selects Agents by those labels, and claims only az1 Agents
 
 ## 4. Labels
 
+A VM appears as three objects at three layers, and a label on one is never copied to another:
+
+```
+KV cluster
+ └─ Node (a bare-metal hypervisor)      <- KV hypervisor Node
+     └─ VirtualMachine                   <- the VM's definition, in the KV cluster
+            │  boots, registers as an Agent, is installed
+            ▼
+Tenant hosted cluster or Customer MCE
+ └─ Node                                 <- the same VM, as a Node of the cluster it serves
+```
+
+Section 4.a covers the labels on the MCE side, where Agents are claimed and Nodes are scheduled.
+Section 4.b covers the labels on the KV cluster's own objects.
+
+### 4.a Labels on MCE-side objects: Agents, NodePools and the Nodes they create
+
 NodePools never read node names. They select Agents by label, and every Agent is labelled by the
 InfraEnv it registers from.
 
-### InfraEnv: the labels its Agents receive
+#### InfraEnv: the labels its Agents receive
 
 assisted-service always stamps `infraenvs.agent-install.openshift.io: <InfraEnv name>`. Each InfraEnv
 also lists every part of its name as an explicit label:
@@ -96,7 +113,7 @@ spec:
     topology.kubernetes.io/zone: az1
 ```
 
-### NodePool: what it selects, and what its Nodes carry
+#### NodePool: what it selects, and what its Nodes carry
 
 ```yaml
 # NodePool of a cluster, for az1
@@ -114,32 +131,25 @@ spec:
     topology.kubernetes.io/zone: az1
 ```
 
-| Label | Why |
+| Label | Reason |
 |---|---|
 | `redbull.io/flavor`, `redbull.io/size` | A NodePool selects a server configuration and size explicitly. "c200 metal across all zones" is `flavor=c200, size=metal`, not a name prefix, which would also sweep in other sizes and variants |
 | `topology.kubernetes.io/zone` on the Agent | Each zone's NodePool claims only Agents of its zone |
 | `topology.kubernetes.io/zone` on the Node (`nodeLabels`) | Tenant workloads spread across zones with `topologySpreadConstraints` (AD7) |
 | `redbull.io/claimed DoesNotExist` | An Agent that has ever served a cluster is never claimed again by any NodePool (section 5). Adding it changes the NodePool's template hash, so confirm the NodePool is `InPlace` before rollout |
 
-### Where each label lives
-
-A VM appears as three objects at three layers, and a label on one is never copied to another:
-
-```
-KV cluster
- └─ Node (a bare-metal hypervisor)      <- KV hypervisor Node
-     └─ VirtualMachine                   <- the VM's definition, in the KV cluster
-            │  boots, registers as an Agent, is installed
-            ▼
-Tenant hosted cluster or Customer MCE
- └─ Node                                 <- the same VM, as a Node of the cluster it serves
-```
+#### Where each label lives, MCE side
 
 | Object | Labels | Set by | Read by |
 |---|---|---|---|
 | **Agent** | `redbull.io/flavor`, `redbull.io/size`, `redbull.io/site`, `topology.kubernetes.io/zone`, `redbull.io/claimed` | The InfraEnv's `agentLabels`; `claimed` at claim time (section 5) | NodePool selectors |
 | **Tenant Node** | `topology.kubernetes.io/zone` | The NodePool's `nodeLabels` | The tenant's scheduler: `topologySpreadConstraints` (AD7) |
 | **Customer MCE Node** | `topology.kubernetes.io/zone` | Per-zone kubelet node labels (a MachineConfig per zone), or labels set at install, from the KV cluster's zone | The MCE's scheduler: hosted control planes spread their etcd and API servers across zones, and the rule does nothing without this label |
+
+### 4.b Labels on KV cluster objects: hypervisors and VirtualMachines
+
+| Object | Labels | Set by | Read by |
+|---|---|---|---|
 | **KV hypervisor Node** | `topology.kubernetes.io/zone` | The KV NodePool's `nodeLabels` | Consistency and reporting; a KV cluster is single-zone (AD8) |
 | **VirtualMachine** | `redbull.io/flavor`, `redbull.io/size`, `redbull.io/site`, `topology.kubernetes.io/zone`, `redbull.io/role`, `redbull.io/mce` | `create-vm`, or the procedure creating an MCE's VMs | Inventory and reporting; `role` and `mce` also by MCE VM anti-affinity |
 
@@ -147,7 +157,7 @@ Tenant hosted cluster or Customer MCE
 
 | Label | Values |
 |---|---|
-| `redbull.io/role` | `mce`: a Node of a Customer MCE. `worker`: a tenant warm-pool VM |
+| `redbull.io/role` | `mce`: A master or worker mce node. `worker`: a tenant warm-pool VM |
 | `redbull.io/mce` | The MCE's name: the MCE it is part of (`role=mce`), or the MCE whose InfraEnv it serves (`role=worker`) |
 
 Both are needed: anti-affinity between an MCE's own VMs selects `role=mce` **and** `mce=<name>`.
