@@ -121,6 +121,40 @@ spec:
 | `topology.kubernetes.io/zone` on the Node (`nodeLabels`) | Tenant workloads spread across zones with `topologySpreadConstraints` (AD7) |
 | `redbull.io/claimed DoesNotExist` | An Agent that has ever served a cluster is never claimed again by any NodePool (section 5). Adding it changes the NodePool's template hash, so confirm the NodePool is `InPlace` before rollout |
 
+### Where each label lives
+
+A VM appears as three objects at three layers, and a label on one is never copied to another:
+
+```
+KV cluster
+ └─ Node (a bare-metal hypervisor)      <- KV hypervisor Node
+     └─ VirtualMachine                   <- the VM's definition, in the KV cluster
+            │  boots, registers as an Agent, is installed
+            ▼
+Tenant hosted cluster or Customer MCE
+ └─ Node                                 <- the same VM, as a Node of the cluster it serves
+```
+
+| Object | Labels | Set by | Read by |
+|---|---|---|---|
+| **Agent** | `redbull.io/flavor`, `redbull.io/size`, `redbull.io/site`, `topology.kubernetes.io/zone`, `redbull.io/claimed` | The InfraEnv's `agentLabels`; `claimed` at claim time (section 5) | NodePool selectors |
+| **Tenant Node** | `topology.kubernetes.io/zone` | The NodePool's `nodeLabels` | The tenant's scheduler: `topologySpreadConstraints` (AD7) |
+| **Customer MCE Node** | `topology.kubernetes.io/zone` | Per-zone kubelet node labels (a MachineConfig per zone), or labels set at install, from the KV cluster's zone | The MCE's scheduler: hosted control planes spread their etcd and API servers across zones, and the rule does nothing without this label |
+| **KV hypervisor Node** | `topology.kubernetes.io/zone` | The KV NodePool's `nodeLabels` | Consistency and reporting; a KV cluster is single-zone (AD8) |
+| **VirtualMachine** | `redbull.io/flavor`, `redbull.io/size`, `redbull.io/site`, `topology.kubernetes.io/zone`, `redbull.io/role`, `redbull.io/mce` | `create-vm`, or the procedure creating an MCE's VMs | Inventory and reporting; `role` and `mce` also by MCE VM anti-affinity |
+
+**`redbull.io/role` and `redbull.io/mce` on VMs:**
+
+| Label | Values |
+|---|---|
+| `redbull.io/role` | `mce`: a Node of a Customer MCE. `worker`: a tenant warm-pool VM |
+| `redbull.io/mce` | The MCE's name: the MCE it is part of (`role=mce`), or the MCE whose InfraEnv it serves (`role=worker`) |
+
+Both are needed: anti-affinity between an MCE's own VMs selects `role=mce` **and** `mce=<name>`.
+With `mce` alone it would also keep MCE VMs away from every host running that MCE's tenant VMs,
+and could leave them unschedulable. A warm-pool VM carries no tenant-cluster label: the cluster is
+not known until it is claimed.
+
 ---
 
 ## 5. Claimed Agents and garbage collection
@@ -175,4 +209,5 @@ being uninstalled was claimed first.
 | 4 | The Kyverno policy marking Agents at claim time |
 | 5 | The Inventory Controller's collection loop (herzi) |
 | 6 | AD26 amendment, or a new AD, for collection |
-| 7 | Updating architecture §9 to this convention once agreed |
+| 7 | How Customer MCE Nodes get their zone label: kubelet node labels per zone, or labels at install |
+| 8 | Updating architecture §9 to this convention once agreed |
