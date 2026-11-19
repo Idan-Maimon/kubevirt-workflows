@@ -19,12 +19,24 @@ All names are lowercase (Kubernetes names must be).
 | Segment | Meaning |
 |---|---|
 | `lifecycle` | `prod`, `prep` or `test` |
-| `flavor` | Cluster: the cluster's flavor. Node and InfraEnv: the server configuration, with an optional variant letter (below) |
+| `flavor` | Cluster: the cluster's flavor, or `mce`, `seed` or `kv` for an infrastructure cluster (below). Node and InfraEnv: the server configuration, with an optional variant letter (below) |
 | `mtl` or `kv<cpu>` | `mtl` for bare metal; `kv` plus the vCPU count for a VM, e.g. `kv32` |
 | `site` | The physical site |
 | `zone` | The availability zone. In InfraEnv names only, never in node names (section 2) |
 | `id` | Cluster: a sequence letter, `a` to `z` |
 | `serial` or `mac` | Node: the server's serial number for bare metal; the VM's full MAC address, 12 hex digits without colons, for a VM |
+
+### Cluster flavors
+
+| Cluster | Flavor | Example |
+|---|---|---|
+| Tenant hosted cluster | The cluster's own flavor | `ocp4-prod-eck-five-a` |
+| Customer MCE | `mce` | `ocp4-prod-mce-five-a` |
+| Seed | `seed` | `ocp4-prod-seed-five-a` |
+| KV cluster | `kv` | `ocp4-prod-kv-five-a` |
+
+`mce`, `seed` and `kv` are reserved: no tenant flavor may use them. They are how a seed's folder
+and a KV cluster's file are told apart from an MCE's and a tenant's in day1.
 
 ### Examples and lengths
 
@@ -178,8 +190,27 @@ spec:
 
 | Object | Labels | Set by | Read by |
 |---|---|---|---|
-| **KV hypervisor Node** | `topology.kubernetes.io/zone` | The KV NodePool's `nodeLabels` | Consistency and reporting; a KV cluster is single-zone (AD8) |
+| **KV hypervisor Node** | `topology.kubernetes.io/zone` (**required**) | The KV NodePool's `nodeLabels` | `create-vm`: the only place it learns which zone a KV cluster is in (below) |
 | **VirtualMachine** | `redbull.io/flavor`, `redbull.io/size`, `redbull.io/site`, `topology.kubernetes.io/zone`, `redbull.io/role`, `redbull.io/mce` | `create-vm`, or the procedure creating an MCE's VMs | Inventory and reporting; `role` and `mce` also by MCE VM anti-affinity |
+
+**The zone label is required on every KV cluster's NodePools.** Cluster names carry no zone, so
+`create-vm` reads a KV cluster's zone from the `topology.kubernetes.io/zone` its NodePools set in
+`nodeLabels`, in the cluster's day1 file. A KV cluster is single-zone (AD8), so every NodePool of the
+file names the same zone:
+
+```yaml
+# sites/five/mces/ocp4-prod-seed-five-a/hostedClusters/ocp4-prod-kv-five-a.yaml
+nodepool:
+- infraEnvName: c200-mtl-five-az1
+  replicas: 12
+  nodeLabels:
+    topology.kubernetes.io/zone: az1
+```
+
+A KV cluster file whose NodePools name no zone, or two different zones, is never offered to
+placement: its capacity silently does not exist for `create-vm`. So the file is **refused when it
+is written**, by `provision-cluster` or day1 CI, unless every NodePool carries exactly one, identical
+zone.
 
 **`redbull.io/role` and `redbull.io/mce` on VMs:**
 
@@ -250,4 +281,5 @@ being uninstalled was claimed first.
 | 7 | How Customer MCE Nodes get their zone label: kubelet node labels per zone, or labels at install |
 | 8 | Site names of at most 6 characters, or a shortened serial, so Cisco bare-metal names stay within 32 |
 | 9 | `create-vm` building VM names as `ocp-<flavor>-kv<cpu>-<site>-<full MAC>`; today it builds `ocp-<InfraEnv>-<6 hex>`, which would include the zone and only half the MAC |
-| 10 | Updating architecture §9 to this convention once agreed |
+| 10 | `provision-cluster` or day1 CI refusing a KV cluster file whose NodePools do not all carry one identical zone label |
+| 11 | Updating architecture §9 to this convention once agreed |
