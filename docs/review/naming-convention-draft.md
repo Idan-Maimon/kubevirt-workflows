@@ -13,26 +13,54 @@ All names are lowercase (Kubernetes names must be).
 | Object | Pattern | Examples |
 |---|---|---|
 | **Cluster** | `ocp4-<lifecycle>-<flavor>-<site>-<id>` | `ocp4-prod-eck-five-a` |
-| **Node** (VM or bare metal) | `ocp-<flavor>-<bm/cpu>-<site>-<id>` | `ocp-c200-metal-five-abc123`<br>`ocp-c200-32-five-ffffff` |
-| **InfraEnv** | `<flavor>-<bm/cpu>-<site>-<zone>` | `c200-metal-five-az1`<br>`c200-metal-five-az3`<br>`c200-32-five-az1` |
+| **Node** (VM or bare metal) | `ocp-<flavor>-<mtl\|kv<cpu>>-<site>-<serial\|mac>` | `ocp-c200-mtl-five-fch2145v1ab`<br>`ocp-c200-kv32-five-02a1b2c3d4e5` |
+| **InfraEnv** | `<flavor>-<mtl\|kv<cpu>>-<site>-<zone>` | `c200-mtl-five-az1`<br>`c200-mtl-five-az3`<br>`c200-kv32-five-az1` |
 
 | Segment | Meaning |
 |---|---|
 | `lifecycle` | `prod`, `prep` or `test` |
 | `flavor` | Cluster: the cluster's flavor. Node and InfraEnv: the server configuration, with an optional variant letter (below) |
-| `bm/cpu` | `metal` for bare metal, or the VM's vCPU count |
+| `mtl` or `kv<cpu>` | `mtl` for bare metal; `kv` plus the vCPU count for a VM, e.g. `kv32` |
 | `site` | The physical site |
 | `zone` | The availability zone. In InfraEnv names only, never in node names (section 2) |
-| `id` | Cluster: a sequence letter, `a` to `z`. Node: 6 hex characters |
+| `id` | Cluster: a sequence letter, `a` to `z` |
+| `serial` or `mac` | Node: the server's serial number for bare metal; the VM's full MAC address, 12 hex digits without colons, for a VM |
+
+### Examples and lengths
+
+| Example | Machine | Length |
+|---|---|---|
+| `ocp-c200-mtl-five-fch2145v1ab` | Cisco bare metal (11-character serial) | 29 |
+| `ocp-c200n-mtl-five-fch2145v1ab` | Cisco bare metal, extra NIC | 30 |
+| `ocp-c200-mtl-five-7xk2m33` | Dell bare metal (7-character service tag) | 25 |
+| `ocp-c200-kv32-five-02a1b2c3d4e5` | VM, 32 vCPU | 31 |
+
+### Length
+
+**Bare-metal names must be at most 32 characters,** the limit Cisco UCS sets on a server's name:
+
+```
+ocp- (4) + flavor with variant (5) + - + mtl (3) + - + <site> + - + serial (11)  = 26 + site
+```
+
+With an 11-character Cisco serial, a site name can be at most 6 characters. The provisioning
+workflow checks the whole name's length before writing it to OME or UCS. VM names are not under
+the UCS limit; Kubernetes allows 63 characters.
+
+### Why a VM carries its full MAC
+
+Each KV cluster has its own MAC prefix. The last 6 hex digits alone can repeat across two KV
+clusters of one site, giving two VMs of the same flavor and size the same name. The full MAC is
+unique wherever MACs are, so the name is too.
 
 ### Flavor variants
 
 | Variant | Meaning | Example |
 |---|---|---|
-| *(none)* | Standard configuration | `ocp-c200-metal-five-abc123` |
-| `n` | Extra NIC | `ocp-c200n-metal-five-abc123` |
-| `d` | Extra disk | `ocp-c200d-metal-five-abc123` |
-| `x` | Other deviation (to be defined) | `ocp-c200x-metal-five-abc123` |
+| *(none)* | Standard configuration | `ocp-c200-mtl-five-fch2145v1ab` |
+| `n` | Extra NIC | `ocp-c200n-mtl-five-fch2145v1ab` |
+| `d` | Extra disk | `ocp-c200d-mtl-five-fch2145v1ab` |
+| `x` | Other deviation (to be defined) | `ocp-c200x-mtl-five-fch2145v1ab` |
 
 ---
 
@@ -57,8 +85,8 @@ collection, and nothing is renamed.
 ```
 ACI leaf -> server-scan: zone = az1
              |
-             v  draw: name ocp-c200-metal-five-*  AND  server-scan zone = az1
-add-server-to-mce installs the server into InfraEnv c200-metal-five-az1
+             v  draw: name ocp-c200-mtl-five-*  AND  server-scan zone = az1
+add-server-to-mce installs the server into InfraEnv c200-mtl-five-az1
              |
              v  the host boots that InfraEnv's discovery image
 Agent registers, labelled by the InfraEnv (section 4)
@@ -69,7 +97,7 @@ the az1 NodePool selects Agents by those labels, and claims only az1 Agents
 
 | # | Rule | Owner |
 |---|---|---|
-| 1 | **The draw filters by name and by zone.** InfraEnv `<flavor>-<bm/cpu>-<site>-<zone>` draws servers named `ocp-<flavor>-<bm/cpu>-<site>-*` whose server-scan zone is `<zone>`. Zones of one site never share servers | `add-server-to-mce`, server-scan |
+| 1 | **The draw filters by name and by zone.** InfraEnv `<flavor>-<mtl\|kv<cpu>>-<site>-<zone>` draws servers named `ocp-<flavor>-<mtl\|kv<cpu>>-<site>-*` whose server-scan zone is `<zone>`. Zones of one site never share servers | `add-server-to-mce`, server-scan |
 | 2 | **server-scan's availability query filters by zone.** | server-scan (to confirm, or add) |
 | 3 | **A VM needs no draw.** `create-vm` builds it on a KV cluster in the zone, and the install puts exactly that VM into the zone's InfraEnv (AD29) | `add-server-to-mce`, `create-vm` |
 | 4 | **Check the zone after registration.** Once the Agent registers, the install run checks that server-scan's zone for the server equals the InfraEnv's zone, and rolls back if not | `add-server-to-mce` |
@@ -104,11 +132,11 @@ assisted-service always stamps `infraenvs.agent-install.openshift.io: <InfraEnv 
 also lists every part of its name as an explicit label:
 
 ```yaml
-# InfraEnv c200-metal-five-az1
+# InfraEnv c200-mtl-five-az1
 spec:
   agentLabels:
     redbull.io/flavor: c200
-    redbull.io/size: metal            # or the vCPU count, e.g. "32"
+    redbull.io/size: mtl              # or kv<cpu> for a VM pool, e.g. kv32
     redbull.io/site: five
     topology.kubernetes.io/zone: az1
 ```
@@ -123,7 +151,7 @@ spec:
       agentLabelSelector:
         matchLabels:
           redbull.io/flavor: c200
-          redbull.io/size: metal
+          redbull.io/size: mtl
           topology.kubernetes.io/zone: az1
         matchExpressions:
           - { key: redbull.io/claimed, operator: DoesNotExist }
@@ -133,7 +161,7 @@ spec:
 
 | Label | Reason |
 |---|---|
-| `redbull.io/flavor`, `redbull.io/size` | A NodePool selects a server configuration and size explicitly. "c200 metal across all zones" is `flavor=c200, size=metal`, not a name prefix, which would also sweep in other sizes and variants |
+| `redbull.io/flavor`, `redbull.io/size` | A NodePool selects a server configuration and size explicitly. "c200 bare metal across all zones" is `flavor=c200, size=mtl`, not a name prefix, which would also sweep in other sizes and variants |
 | `topology.kubernetes.io/zone` on the Agent | Each zone's NodePool claims only Agents of its zone |
 | `topology.kubernetes.io/zone` on the Node (`nodeLabels`) | Tenant workloads spread across zones with `topologySpreadConstraints` (AD7) |
 | `redbull.io/claimed DoesNotExist` | An Agent that has ever served a cluster is never claimed again by any NodePool (section 5). Adding it changes the NodePool's template hash, so confirm the NodePool is `InPlace` before rollout |
@@ -220,4 +248,6 @@ being uninstalled was claimed first.
 | 5 | The Inventory Controller's collection loop (herzi) |
 | 6 | AD26 amendment, or a new AD, for collection |
 | 7 | How Customer MCE Nodes get their zone label: kubelet node labels per zone, or labels at install |
-| 8 | Updating architecture §9 to this convention once agreed |
+| 8 | Site names of at most 6 characters, or a shortened serial, so Cisco bare-metal names stay within 32 |
+| 9 | `create-vm` building VM names as `ocp-<flavor>-kv<cpu>-<site>-<full MAC>`; today it builds `ocp-<InfraEnv>-<6 hex>`, which would include the zone and only half the MAC |
+| 10 | Updating architecture §9 to this convention once agreed |
