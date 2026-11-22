@@ -12,17 +12,18 @@ All names are lowercase (Kubernetes names must be).
 
 | Object | Pattern | Examples |
 |---|---|---|
-| **Cluster** | `ocp4-<lifecycle>-<flavor>-<site>-<id>` | `ocp4-prod-eck-five-a` |
+| **Cluster** (tenant, MCE) | `ocp4-<lifecycle>-<flavor>-<site>-<id>` | `ocp4-prod-eck-five-a` |
+| **Cluster** (seed, KV) | `ocp4-<lifecycle>-<seed\|kv>-<site>-<zone>-<id>` | `ocp4-prod-seed-five-az1-a`<br>`ocp4-prod-kv-five-az1-a` |
 | **Node** (VM or bare metal) | `ocp-<flavor>-<mtl\|kv<cpu>>-<site>-<serial\|mac>` | `ocp-c200-mtl-five-fch2145v1ab`<br>`ocp-c200-kv32-five-02a1b2c3d4e5` |
-| **InfraEnv** | `<flavor>-<mtl\|kv<cpu>>-<site>-<zone>` | `c200-mtl-five-az1`<br>`c200-mtl-five-az3`<br>`c200-kv32-five-az1` |
+| **InfraEnv** | `<flavor>-<mtl\|kv<cpu>>-<zone>` | `c200-mtl-az1`<br>`c200-mtl-az3`<br>`c200-kv32-az1` |
 
 | Segment | Meaning |
 |---|---|
 | `lifecycle` | `prod`, `prep` or `test` |
 | `flavor` | Cluster: the cluster's flavor, or `mce`, `seed` or `kv` for an infrastructure cluster (below). Node and InfraEnv: the server configuration, with an optional variant letter (below) |
 | `mtl` or `kv<cpu>` | `mtl` for bare metal; `kv` plus the vCPU count for a VM, e.g. `kv32` |
-| `site` | The physical site |
-| `zone` | The availability zone. In InfraEnv names only, never in node names (section 2) |
+| `site` | The physical site. Not in InfraEnv names: an InfraEnv belongs to one MCE, and so to that MCE's site |
+| `zone` | The availability zone. In InfraEnv, seed and KV cluster names; never in node, tenant cluster or MCE names (section 2) |
 | `id` | Cluster: a sequence letter, `a` to `z` |
 | `serial` or `mac` | Node: the server's serial number for bare metal; the VM's full MAC address, 12 hex digits without colons, for a VM |
 
@@ -32,8 +33,8 @@ All names are lowercase (Kubernetes names must be).
 |---|---|---|
 | Tenant hosted cluster | The cluster's own flavor | `ocp4-prod-eck-five-a` |
 | Customer MCE | `mce` | `ocp4-prod-mce-five-a` |
-| Seed | `seed` | `ocp4-prod-seed-five-a` |
-| KV cluster | `kv` | `ocp4-prod-kv-five-a` |
+| Seed | `seed` | `ocp4-prod-seed-five-az1-a` |
+| KV cluster | `kv` | `ocp4-prod-kv-five-az1-a` |
 
 `mce`, `seed` and `kv` are reserved: no tenant flavor may use them. They are how a seed's folder
 and a KV cluster's file are told apart from an MCE's and a tenant's in day1.
@@ -98,7 +99,7 @@ collection, and nothing is renamed.
 ACI leaf -> server-scan: zone = az1
              |
              v  draw: name ocp-c200-mtl-five-*  AND  server-scan zone = az1
-add-server-to-mce installs the server into InfraEnv c200-mtl-five-az1
+add-server-to-mce installs the server into InfraEnv c200-mtl-az1
              |
              v  the host boots that InfraEnv's discovery image
 Agent registers, labelled by the InfraEnv (section 4)
@@ -109,7 +110,7 @@ the az1 NodePool selects Agents by those labels, and claims only az1 Agents
 
 | # | Rule | Owner |
 |---|---|---|
-| 1 | **The draw filters by name and by zone.** InfraEnv `<flavor>-<mtl\|kv<cpu>>-<site>-<zone>` draws servers named `ocp-<flavor>-<mtl\|kv<cpu>>-<site>-*` whose server-scan zone is `<zone>`. Zones of one site never share servers | `add-server-to-mce`, server-scan |
+| 1 | **The draw filters by name and by zone.** InfraEnv `<flavor>-<mtl\|kv<cpu>>-<zone>` draws servers named `ocp-<flavor>-<mtl\|kv<cpu>>-<site>-*`, where `<site>` is its MCE's site, whose server-scan zone is `<zone>`. Zones of one site never share servers | `add-server-to-mce`, server-scan |
 | 2 | **server-scan's availability query filters by zone.** | server-scan (to confirm, or add) |
 | 3 | **A VM needs no draw.** `create-vm` builds it on a KV cluster in the zone, and the install puts exactly that VM into the zone's InfraEnv (AD29) | `add-server-to-mce`, `create-vm` |
 | 4 | **Check the zone after registration.** Once the Agent registers, the install run checks that server-scan's zone for the server equals the InfraEnv's zone, and rolls back if not | `add-server-to-mce` |
@@ -141,10 +142,10 @@ InfraEnv it registers from.
 #### InfraEnv: the labels its Agents receive
 
 assisted-service always stamps `infraenvs.agent-install.openshift.io: <InfraEnv name>`. Each InfraEnv
-also lists every part of its name as an explicit label:
+also lists every part of its name, and its MCE's site, as an explicit label:
 
 ```yaml
-# InfraEnv c200-mtl-five-az1
+# InfraEnv c200-mtl-az1
 spec:
   agentLabels:
     redbull.io/flavor: c200
@@ -193,15 +194,15 @@ spec:
 | **KV hypervisor Node** | `topology.kubernetes.io/zone` (**required**) | The KV NodePool's `nodeLabels` | `create-vm`: the only place it learns which zone a KV cluster is in (below) |
 | **VirtualMachine** | `redbull.io/flavor`, `redbull.io/size`, `redbull.io/site`, `topology.kubernetes.io/zone`, `redbull.io/role`, `redbull.io/mce` | `create-vm`, or the procedure creating an MCE's VMs | Inventory and reporting; `role` and `mce` also by MCE VM anti-affinity |
 
-**The zone label is required on every KV cluster's NodePools.** Cluster names carry no zone, so
-`create-vm` reads a KV cluster's zone from the `topology.kubernetes.io/zone` its NodePools set in
+**The zone label is required on every KV cluster's NodePools, and must equal the zone in the KV
+cluster's name.** `create-vm` reads a KV cluster's zone from the `topology.kubernetes.io/zone` its NodePools set in
 `nodeLabels`, in the cluster's day1 file. A KV cluster is single-zone (AD8), so every NodePool of the
 file names the same zone:
 
 ```yaml
-# sites/five/mces/ocp4-prod-seed-five-a/hostedClusters/ocp4-prod-kv-five-a.yaml
+# sites/five/mces/ocp4-prod-seed-five-az1-a/hostedClusters/ocp4-prod-kv-five-az1-a.yaml
 nodepool:
-- infraEnvName: c200-mtl-five-az1
+- infraEnvName: c200-mtl-az1
   replicas: 12
   nodeLabels:
     topology.kubernetes.io/zone: az1
@@ -210,7 +211,7 @@ nodepool:
 A KV cluster file whose NodePools name no zone, or two different zones, is never offered to
 placement: its capacity silently does not exist for `create-vm`. So the file is **refused when it
 is written**, by `provision-cluster` or day1 CI, unless every NodePool carries exactly one, identical
-zone.
+zone, equal to the zone in the cluster's name.
 
 **`redbull.io/role` and `redbull.io/mce` on VMs:**
 
@@ -280,6 +281,6 @@ being uninstalled was claimed first.
 | 6 | AD26 amendment, or a new AD, for collection |
 | 7 | How Customer MCE Nodes get their zone label: kubelet node labels per zone, or labels at install |
 | 8 | Site names of at most 6 characters, or a shortened serial, so Cisco bare-metal names stay within 32 |
-| 9 | `create-vm` building VM names as `ocp-<flavor>-kv<cpu>-<site>-<full MAC>`; today it builds `ocp-<InfraEnv>-<6 hex>`, which would include the zone and only half the MAC |
-| 10 | `provision-cluster` or day1 CI refusing a KV cluster file whose NodePools do not all carry one identical zone label |
+| 9 | `create-vm` building VM names as `ocp-<flavor>-kv<cpu>-<site>-<full MAC>`; today it builds `ocp-<InfraEnv>-<6 hex>`, which would include the zone, leave out the site, and carry only half the MAC |
+| 10 | `provision-cluster` or day1 CI refusing a KV cluster file whose NodePools do not all carry one identical zone label, equal to the zone in the cluster's name |
 | 11 | Updating architecture §9 to this convention once agreed |
