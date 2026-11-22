@@ -27,7 +27,7 @@ Decided with the operator (reversing CLAUDE.md §4's "none to reopen" block):
    requested `topology.kubernetes.io/zone`, sorted by the cluster name's `id` letter (oldest
    first). Read on the **cluster-lifecycle limb** with `redbull-git-token`, cached per day1 commit.
 4. **Names follow the platform naming convention**
-   (`kubevirt-workflows/docs/review/naming-convention-draft.md`): clusters
+   (`kubevirt-workflows/docs/naming-convention.md`): clusters
    `ocp4-<lifecycle>-<flavor>-<site>-<id>` (`kv` for a KV cluster, `seed` for a seed), InfraEnvs
    `<flavor>-kv<cpu>-<site>-<zone>` (`c200-kv32-five-az1`), VMs
    `ocp-<flavor>-kv<cpu>-<site>-<full MAC, 12 hex>` (`ocp-c200-kv32-five-0e03f2a1b2c3`), VM labels

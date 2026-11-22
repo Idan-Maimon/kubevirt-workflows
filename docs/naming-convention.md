@@ -1,4 +1,4 @@
-# Naming, zones and labels (DRAFT, for discussion)
+# Naming, zones and labels
 
 How clusters, nodes and InfraEnvs are named, how a server's zone is known, how a NodePool draws
 only the Agents of its zone, and how a machine that has served a cluster is kept out of the pool
