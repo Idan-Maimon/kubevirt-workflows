@@ -1,0 +1,412 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1250" width="1200" height="1250" class="t viz light" style="--page:#f9f9f7;--band:#f1f0ec;--card:#ffffff;--ink:#0b0b0b;--ink2:#52514e;--muted:#898781;--hair:rgba(11,11,11,0.10);--track:#e1e0d9;--good:#0ca30c;--warn:#fab219;--todo:#898781" role="img" aria-labelledby="t d">
+<title id="t">OCP KubeVirt platform: build status</title>
+<desc id="d">15 done, 10 partial, 9 not started, of 34 components, as of 2026-11-22.</desc>
+<style>
+.t{font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+.title{font-size:24px;font-weight:650;fill:var(--ink)}
+.sub{font-size:13px;fill:var(--ink2)}
+.small{font-size:11.5px;fill:var(--muted)}
+.lane-title{font-size:13.5px;font-weight:650;fill:var(--ink)}
+.lane-sub{font-size:11px;fill:var(--muted)}
+.name{font-size:12px;font-weight:600;fill:var(--ink)}
+.owner{font-size:10.5px;fill:var(--muted)}
+.tile-v{font-size:26px;font-weight:650;fill:var(--ink)}
+.tile-l{font-size:12px;fill:var(--ink2)}
+.flow-l{font-size:11px;fill:var(--ink2);paint-order:stroke;stroke:var(--page);stroke-width:4px;stroke-linejoin:round}
+.band{fill:var(--band)}
+.card{fill:var(--card);stroke:var(--hair);stroke-width:1}
+.s-todo .card,.s-external .card{stroke-dasharray:4 3;stroke:var(--muted);stroke-opacity:.55}
+.s-todo .name,.s-external .name{fill:var(--ink2)}
+.accent{fill:var(--todo)}
+.s-done .accent{fill:var(--good)}
+.s-partial .accent{fill:var(--warn)}
+.flow{fill:none;stroke:var(--muted);stroke-width:1.6;stroke-dasharray:5 5;animation:dash 1.1s linear infinite}
+.pulse{fill:none;stroke:var(--warn);stroke-width:2;transform-box:fill-box;transform-origin:center;animation:pulse 2.2s ease-out infinite}
+.grow{transform-box:fill-box;transform-origin:left center;animation:grow 1.4s cubic-bezier(.2,.7,.2,1)}
+@keyframes dash{to{stroke-dashoffset:-10}}
+@keyframes pulse{0%{transform:scale(1);opacity:.6}80%{transform:scale(2.2);opacity:0}100%{opacity:0}}
+@keyframes grow{from{transform:scaleX(0)}to{transform:scaleX(1)}}
+@media (prefers-reduced-motion:reduce){.flow,.pulse,.grow{animation:none}}
+</style>
+<defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 Z" fill="var(--muted)"/></marker></defs>
+<rect width="1200" height="1250" fill="var(--page)"/>
+<text class="title" x="24" y="50">OCP KubeVirt platform: build status</text>
+<text class="sub" x="24" y="76">Status as of 2026-11-22 · 34 components</text>
+<g class="s-done"><circle cx="33" cy="106" r="9" fill="var(--good)"/><path d="M29.2,106.2 L31.9,109 L37,103.2" fill="none" stroke="#ffffff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><text class="tile-l" x="48" y="110">Done</text></g>
+<g class="s-partial"><circle class="pulse" cx="94.6" cy="106" r="8"/><circle cx="94.6" cy="106" r="8" fill="var(--card)" stroke="var(--warn)" stroke-width="2"/><path d="M94.6,98 A8,8 0 0 1 94.6,114 Z" fill="var(--warn)"/><text class="tile-l" x="109.6" y="110">In progress</text></g>
+<g class="s-todo"><circle cx="204.5" cy="106" r="7.5" fill="none" stroke="var(--todo)" stroke-width="1.6" stroke-dasharray="2.6 2.4"/><text class="tile-l" x="219.5" y="110">Not started</text></g>
+<g class="s-external"><circle cx="314.4" cy="106" r="7.5" fill="none" stroke="var(--muted)" stroke-width="1.6"/><circle cx="314.4" cy="106" r="2.2" fill="var(--muted)"/><text class="tile-l" x="329.4" y="110">External</text></g>
+<text class="small" x="24" y="138">Arrows show who drives whom. A pulsing marker is work in progress.</text>
+<g class="s-done"><circle cx="790" cy="44" r="9" fill="var(--good)"/><path d="M786.2,44.2 L788.9,47 L794,41.2" fill="none" stroke="#ffffff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><text class="tile-l" x="806" y="48">Done</text><text class="tile-v" x="780" y="86">15</text></g>
+<g class="s-partial"><circle class="pulse" cx="922" cy="44" r="8"/><circle cx="922" cy="44" r="8" fill="var(--card)" stroke="var(--warn)" stroke-width="2"/><path d="M922,36 A8,8 0 0 1 922,52 Z" fill="var(--warn)"/><text class="tile-l" x="938" y="48">In progress</text><text class="tile-v" x="912" y="86">10</text></g>
+<g class="s-todo"><circle cx="1054" cy="44" r="7.5" fill="none" stroke="var(--todo)" stroke-width="1.6" stroke-dasharray="2.6 2.4"/><text class="tile-l" x="1070" y="48">Not started</text><text class="tile-v" x="1044" y="86">9</text></g>
+<rect class="grow" x="780.0" y="104" width="169.4" height="8" rx="4" fill="var(--good)"/>
+<rect class="grow" x="951.4" y="104" width="112.9" height="8" rx="4" fill="var(--warn)"/>
+<rect class="grow" x="1066.4" y="104" width="101.6" height="8" rx="4" fill="var(--track)"/>
+<text class="small" x="780" y="132">44% done · 15 of 34</text>
+<rect class="band" x="24" y="164" width="1060" height="86" rx="12"/>
+<text class="lane-title" x="40" y="192">People &amp; portal</text>
+<text class="lane-sub" x="40" y="210">Self-service and</text>
+<text class="lane-sub" x="40" y="224">operations</text>
+<g class="chip s-external">
+<title>Tenant / SRE · External
+Tenants request clusters and changes; SREs operate the platform.</title>
+<rect class="card" x="174.0" y="180" width="215.5" height="54" rx="9"/>
+<rect class="accent" x="174.0" y="190" width="3" height="34" rx="1.5"/>
+<circle cx="196.0" cy="207.0" r="7.5" fill="none" stroke="var(--muted)" stroke-width="1.6"/><circle cx="196.0" cy="207.0" r="2.2" fill="var(--muted)"/>
+<text class="name" x="214.0" y="203">Tenant / SRE</text>
+<text class="owner" x="214.0" y="220">people</text>
+</g>
+<g class="chip s-partial">
+<title>Wingman portal · In progress
+Live on the sandbox. Workflow-backed create, upgrades and add-servers are behind flags, off by default. No tenant role yet.</title>
+<rect class="card" x="401.5" y="180" width="215.5" height="54" rx="9"/>
+<rect class="accent" x="401.5" y="190" width="3" height="34" rx="1.5"/>
+<circle class="pulse" cx="423.5" cy="207.0" r="8"/><circle cx="423.5" cy="207.0" r="8" fill="var(--card)" stroke="var(--warn)" stroke-width="2"/><path d="M423.5,199.0 A8,8 0 0 1 423.5,215.0 Z" fill="var(--warn)"/>
+<text class="name" x="441.5" y="203">Wingman portal</text>
+<text class="owner" x="441.5" y="220">LiadYahav/wingman</text>
+</g>
+<rect class="band" x="24" y="280" width="1060" height="278" rx="12"/>
+<text class="lane-title" x="40" y="308">Workflows</text>
+<text class="lane-sub" x="40" y="326">Temporal: every</text>
+<text class="lane-sub" x="40" y="340">multi-step change</text>
+<g class="chip s-done">
+<title>Temporal orchestrator · Done
+The brain, the per-domain workers and the trigger API.</title>
+<rect class="card" x="174.0" y="296" width="215.5" height="54" rx="9"/>
+<rect class="accent" x="174.0" y="306" width="3" height="34" rx="1.5"/>
+<circle cx="196.0" cy="323.0" r="9" fill="var(--good)"/><path d="M192.2,323.2 L194.9,326.0 L200.0,320.2" fill="none" stroke="#ffffff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+<text class="name" x="214.0" y="319">Temporal orchestrator</text>
+<text class="owner" x="214.0" y="336">workflows</text>
+</g>
+<g class="chip s-partial">
+<title>add-server-to-mce · In progress
+Bare metal done. Not yet: the create-vm child for VM pools (AD29), and the draw built from the MCE&#x27;s site and the zone filter under the new InfraEnv names.</title>
+<rect class="card" x="401.5" y="296" width="215.5" height="54" rx="9"/>
+<rect class="accent" x="401.5" y="306" width="3" height="34" rx="1.5"/>
+<circle class="pulse" cx="423.5" cy="323.0" r="8"/><circle cx="423.5" cy="323.0" r="8" fill="var(--card)" stroke="var(--warn)" stroke-width="2"/><path d="M423.5,315.0 A8,8 0 0 1 423.5,331.0 Z" fill="var(--warn)"/>
+<text class="name" x="441.5" y="319">add-server-to-mce</text>
+<text class="owner" x="441.5" y="336">workflows</text>
+</g>
+<g class="chip s-done">
+<title>remove-server-from-mce · Done
+Power off, BareMetalHost, NMStateConfig, Agent, PXE map.</title>
+<rect class="card" x="629.0" y="296" width="215.5" height="54" rx="9"/>
+<rect class="accent" x="629.0" y="306" width="3" height="34" rx="1.5"/>
+<circle cx="651.0" cy="323.0" r="9" fill="var(--good)"/><path d="M647.2,323.2 L649.9,326.0 L655.0,320.2" fill="none" stroke="#ffffff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+<text class="name" x="669.0" y="319">remove-server-from-mce</text>
+<text class="owner" x="669.0" y="336">workflows</text>
+</g>
+<g class="chip s-done">
+<title>uninstall-server-from-hc · Done
+Takes a node out of its hosted cluster; ends at a free Agent.</title>
+<rect class="card" x="856.5" y="296" width="215.5" height="54" rx="9"/>
+<rect class="accent" x="856.5" y="306" width="3" height="34" rx="1.5"/>
+<circle cx="878.5" cy="323.0" r="9" fill="var(--good)"/><path d="M874.7,323.2 L877.4,326.0 L882.5,320.2" fill="none" stroke="#ffffff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+<text class="name" x="896.5" y="319">uninstall-server-from-hc</text>
+<text class="owner" x="896.5" y="336">workflows</text>
+</g>
+<g class="chip s-done">
+<title>publish-infraenv-to-pxe · Done
+publish-infraenv-to-pxe-server: republishes an InfraEnv&#x27;s boot entry.</title>
+<rect class="card" x="174.0" y="360" width="215.5" height="54" rx="9"/>
+<rect class="accent" x="174.0" y="370" width="3" height="34" rx="1.5"/>
+<circle cx="196.0" cy="387.0" r="9" fill="var(--good)"/><path d="M192.2,387.2 L194.9,390.0 L200.0,384.2" fill="none" stroke="#ffffff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+<text class="name" x="214.0" y="383">publish-infraenv-to-pxe</text>
+<text class="owner" x="214.0" y="400">workflows</text>
+</g>
+<g class="chip s-partial">
+<title>provision-dell-server · In progress
+Built; its worker is not deployed.</title>
+<rect class="card" x="401.5" y="360" width="215.5" height="54" rx="9"/>
+<rect class="accent" x="401.5" y="370" width="3" height="34" rx="1.5"/>
+<circle class="pulse" cx="423.5" cy="387.0" r="8"/><circle cx="423.5" cy="387.0" r="8" fill="var(--card)" stroke="var(--warn)" stroke-width="2"/><path d="M423.5,379.0 A8,8 0 0 1 423.5,395.0 Z" fill="var(--warn)"/>
+<text class="name" x="441.5" y="383">provision-dell-server</text>
+<text class="owner" x="441.5" y="400">workflows</text>
+</g>
+<g class="chip s-done">
+<title>segment workflows · Done
+initialize-segment, allocate-segment, release-segment.</title>
+<rect class="card" x="629.0" y="360" width="215.5" height="54" rx="9"/>
+<rect class="accent" x="629.0" y="370" width="3" height="34" rx="1.5"/>
+<circle cx="651.0" cy="387.0" r="9" fill="var(--good)"/><path d="M647.2,387.2 L649.9,390.0 L655.0,384.2" fill="none" stroke="#ffffff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+<text class="name" x="669.0" y="383">segment workflows</text>
+<text class="owner" x="669.0" y="400">workflows</text>
+</g>
+<g class="chip s-partial">
+<title>provision-cluster · In progress
+On main; its worker chart is not yet deployed, and Wingman&#x27;s switch to it is off by default.</title>
+<rect class="card" x="856.5" y="360" width="215.5" height="54" rx="9"/>
+<rect class="accent" x="856.5" y="370" width="3" height="34" rx="1.5"/>
+<circle class="pulse" cx="878.5" cy="387.0" r="8"/><circle cx="878.5" cy="387.0" r="8" fill="var(--card)" stroke="var(--warn)" stroke-width="2"/><path d="M878.5,379.0 A8,8 0 0 1 878.5,395.0 Z" fill="var(--warn)"/>
+<text class="name" x="896.5" y="383">provision-cluster</text>
+<text class="owner" x="896.5" y="400">workflows</text>
+</g>
+<g class="chip s-partial">
+<title>update-nodepool · In progress
+On branch feat/update-nodepool, not merged. Assessment findings open (release per AD23, named node, floor).</title>
+<rect class="card" x="174.0" y="424" width="215.5" height="54" rx="9"/>
+<rect class="accent" x="174.0" y="434" width="3" height="34" rx="1.5"/>
+<circle class="pulse" cx="196.0" cy="451.0" r="8"/><circle cx="196.0" cy="451.0" r="8" fill="var(--card)" stroke="var(--warn)" stroke-width="2"/><path d="M196.0,443.0 A8,8 0 0 1 196.0,459.0 Z" fill="var(--warn)"/>
+<text class="name" x="214.0" y="447">update-nodepool</text>
+<text class="owner" x="214.0" y="464">workflows</text>
+</g>
+<g class="chip s-partial">
+<title>create-vm · In progress
+Redesign in review (workflows#26): a worker in each KV cluster and a zone lock. The deployed version cannot succeed: no agents.</title>
+<rect class="card" x="401.5" y="424" width="215.5" height="54" rx="9"/>
+<rect class="accent" x="401.5" y="434" width="3" height="34" rx="1.5"/>
+<circle class="pulse" cx="423.5" cy="451.0" r="8"/><circle cx="423.5" cy="451.0" r="8" fill="var(--card)" stroke="var(--warn)" stroke-width="2"/><path d="M423.5,443.0 A8,8 0 0 1 423.5,459.0 Z" fill="var(--warn)"/>
+<text class="name" x="441.5" y="447">create-vm</text>
+<text class="owner" x="441.5" y="464">workflows</text>
+</g>
+<g class="chip s-todo">
+<title>KV zone lock · Not started
+One placement at a time per zone (AD32). In the create-vm design.</title>
+<rect class="card" x="629.0" y="424" width="215.5" height="54" rx="9"/>
+<rect class="accent" x="629.0" y="434" width="3" height="34" rx="1.5"/>
+<circle cx="651.0" cy="451.0" r="7.5" fill="none" stroke="var(--todo)" stroke-width="1.6" stroke-dasharray="2.6 2.4"/>
+<text class="name" x="669.0" y="447">KV zone lock</text>
+<text class="owner" x="669.0" y="464">workflows</text>
+</g>
+<g class="chip s-partial">
+<title>upgrade-cluster · In progress
+Sandbox only, not production.</title>
+<rect class="card" x="856.5" y="424" width="215.5" height="54" rx="9"/>
+<rect class="accent" x="856.5" y="434" width="3" height="34" rx="1.5"/>
+<circle class="pulse" cx="878.5" cy="451.0" r="8"/><circle cx="878.5" cy="451.0" r="8" fill="var(--card)" stroke="var(--warn)" stroke-width="2"/><path d="M878.5,443.0 A8,8 0 0 1 878.5,459.0 Z" fill="var(--warn)"/>
+<text class="name" x="896.5" y="447">upgrade-cluster</text>
+<text class="owner" x="896.5" y="464">workflows</text>
+</g>
+<g class="chip s-todo">
+<title>deprovision-cluster · Not started
+Planned. Today an ArgoCD PostDelete hook releases the segment.</title>
+<rect class="card" x="174.0" y="488" width="215.5" height="54" rx="9"/>
+<rect class="accent" x="174.0" y="498" width="3" height="34" rx="1.5"/>
+<circle cx="196.0" cy="515.0" r="7.5" fill="none" stroke="var(--todo)" stroke-width="1.6" stroke-dasharray="2.6 2.4"/>
+<text class="name" x="214.0" y="511">deprovision-cluster</text>
+<text class="owner" x="214.0" y="528">workflows</text>
+</g>
+<rect class="band" x="24" y="588" width="1060" height="150" rx="12"/>
+<text class="lane-title" x="40" y="616">Desired state</text>
+<text class="lane-sub" x="40" y="634">Git holds it, ArgoCD</text>
+<text class="lane-sub" x="40" y="648">applies it</text>
+<g class="chip s-done">
+<title>day1 repo · Done
+One file per hosted cluster: NodePools, versions, network.</title>
+<rect class="card" x="174.0" y="604" width="215.5" height="54" rx="9"/>
+<rect class="accent" x="174.0" y="614" width="3" height="34" rx="1.5"/>
+<circle cx="196.0" cy="631.0" r="9" fill="var(--good)"/><path d="M192.2,631.2 L194.9,634.0 L200.0,628.2" fill="none" stroke="#ffffff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+<text class="name" x="214.0" y="627">day1 repo</text>
+<text class="owner" x="214.0" y="644">gitops-day1-platform-config</text>
+</g>
+<g class="chip s-done">
+<title>day2 sig repos · Done
+Per-team add-ons on every cluster kind.</title>
+<rect class="card" x="401.5" y="604" width="215.5" height="54" rx="9"/>
+<rect class="accent" x="401.5" y="614" width="3" height="34" rx="1.5"/>
+<circle cx="423.5" cy="631.0" r="9" fill="var(--good)"/><path d="M419.7,631.2 L422.4,634.0 L427.5,628.2" fill="none" stroke="#ffffff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+<text class="name" x="441.5" y="627">day2 sig repos</text>
+<text class="owner" x="441.5" y="644">gitops-day2-prod</text>
+</g>
+<g class="chip s-partial">
+<title>hostedclusters-setup · In progress
+Not yet rendered: the redbull.io/claimed exclusion, InfraEnv agentLabels, zone nodeLabels. NodePool annotations: PR #4 open.</title>
+<rect class="card" x="629.0" y="604" width="215.5" height="54" rx="9"/>
+<rect class="accent" x="629.0" y="614" width="3" height="34" rx="1.5"/>
+<circle class="pulse" cx="651.0" cy="631.0" r="8"/><circle cx="651.0" cy="631.0" r="8" fill="var(--card)" stroke="var(--warn)" stroke-width="2"/><path d="M651.0,623.0 A8,8 0 0 1 651.0,639.0 Z" fill="var(--warn)"/>
+<text class="name" x="669.0" y="627">hostedclusters-setup</text>
+<text class="owner" x="669.0" y="644">helm-charts-hostedclusters-s…</text>
+</g>
+<g class="chip s-done">
+<title>ArgoCD · Done
+The only applicator of desired state.</title>
+<rect class="card" x="856.5" y="604" width="215.5" height="54" rx="9"/>
+<rect class="accent" x="856.5" y="614" width="3" height="34" rx="1.5"/>
+<circle cx="878.5" cy="631.0" r="9" fill="var(--good)"/><path d="M874.7,631.2 L877.4,634.0 L882.5,628.2" fill="none" stroke="#ffffff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+<text class="name" x="896.5" y="627">ArgoCD</text>
+<text class="owner" x="896.5" y="644">redbull-platform</text>
+</g>
+<g class="chip s-todo">
+<title>Capacity policy file · Not started
+AD31: maxNodes, freeCpuPercent, standby sizes, read by placement and the KV Capacity Controller alike.</title>
+<rect class="card" x="174.0" y="668" width="215.5" height="54" rx="9"/>
+<rect class="accent" x="174.0" y="678" width="3" height="34" rx="1.5"/>
+<circle cx="196.0" cy="695.0" r="7.5" fill="none" stroke="var(--todo)" stroke-width="1.6" stroke-dasharray="2.6 2.4"/>
+<text class="name" x="214.0" y="691">Capacity policy file</text>
+<text class="owner" x="214.0" y="708">platform repo</text>
+</g>
+<rect class="band" x="24" y="768" width="1060" height="150" rx="12"/>
+<text class="lane-title" x="40" y="796">Clusters</text>
+<text class="lane-sub" x="40" y="814">Where control planes</text>
+<text class="lane-sub" x="40" y="828">and workers run</text>
+<g class="chip s-done">
+<title>Customer MCE hubs · Done
+Tenant hubs running HyperShift and the Agent installer.</title>
+<rect class="card" x="174.0" y="784" width="215.5" height="54" rx="9"/>
+<rect class="accent" x="174.0" y="794" width="3" height="34" rx="1.5"/>
+<circle cx="196.0" cy="811.0" r="9" fill="var(--good)"/><path d="M192.2,811.2 L194.9,814.0 L200.0,808.2" fill="none" stroke="#ffffff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+<text class="name" x="214.0" y="807">Customer MCE hubs</text>
+<text class="owner" x="214.0" y="824">platform</text>
+</g>
+<g class="chip s-done">
+<title>Tenant hosted clusters · Done
+Hosted control planes on the MCE; workers from InfraEnv pools.</title>
+<rect class="card" x="401.5" y="784" width="215.5" height="54" rx="9"/>
+<rect class="accent" x="401.5" y="794" width="3" height="34" rx="1.5"/>
+<circle cx="423.5" cy="811.0" r="9" fill="var(--good)"/><path d="M419.7,811.2 L422.4,814.0 L427.5,808.2" fill="none" stroke="#ffffff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+<text class="name" x="441.5" y="807">Tenant hosted clusters</text>
+<text class="owner" x="441.5" y="824">platform</text>
+</g>
+<g class="chip s-todo">
+<title>Seed clusters · Not started
+One bare-metal seed per zone (AD17). Its day1 folders do not exist yet.</title>
+<rect class="card" x="629.0" y="784" width="215.5" height="54" rx="9"/>
+<rect class="accent" x="629.0" y="794" width="3" height="34" rx="1.5"/>
+<circle cx="651.0" cy="811.0" r="7.5" fill="none" stroke="var(--todo)" stroke-width="1.6" stroke-dasharray="2.6 2.4"/>
+<text class="name" x="669.0" y="807">Seed clusters</text>
+<text class="owner" x="669.0" y="824">platform</text>
+</g>
+<g class="chip s-partial">
+<title>KV clusters · In progress
+Proven in the lab only.</title>
+<rect class="card" x="856.5" y="784" width="215.5" height="54" rx="9"/>
+<rect class="accent" x="856.5" y="794" width="3" height="34" rx="1.5"/>
+<circle class="pulse" cx="878.5" cy="811.0" r="8"/><circle cx="878.5" cy="811.0" r="8" fill="var(--card)" stroke="var(--warn)" stroke-width="2"/><path d="M878.5,803.0 A8,8 0 0 1 878.5,819.0 Z" fill="var(--warn)"/>
+<text class="name" x="896.5" y="807">KV clusters</text>
+<text class="owner" x="896.5" y="824">platform</text>
+</g>
+<g class="chip s-todo">
+<title>vm-lifecycle-worker · Not started
+One per KV cluster: reports capacity and builds VMs, with its ConfigMap (cluster, site, VLAN, MAC prefix).</title>
+<rect class="card" x="174.0" y="848" width="215.5" height="54" rx="9"/>
+<rect class="accent" x="174.0" y="858" width="3" height="34" rx="1.5"/>
+<circle cx="196.0" cy="875.0" r="7.5" fill="none" stroke="var(--todo)" stroke-width="1.6" stroke-dasharray="2.6 2.4"/>
+<text class="name" x="214.0" y="871">vm-lifecycle-worker</text>
+<text class="owner" x="214.0" y="888">workflows</text>
+</g>
+<g class="chip s-done">
+<title>kubevirt-redfish · Done
+Exposes each VM as a Redfish system, so it installs like bare metal.</title>
+<rect class="card" x="401.5" y="848" width="215.5" height="54" rx="9"/>
+<rect class="accent" x="401.5" y="858" width="3" height="34" rx="1.5"/>
+<circle cx="423.5" cy="875.0" r="9" fill="var(--good)"/><path d="M419.7,875.2 L422.4,878.0 L427.5,872.2" fill="none" stroke="#ffffff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+<text class="name" x="441.5" y="871">kubevirt-redfish</text>
+<text class="owner" x="441.5" y="888">kubevirt-redfish</text>
+</g>
+<g class="chip s-todo">
+<title>Node bin-packing · Not started
+AD30: HighNodeUtilization and CompactAndScale. Not confirmed on any KV cluster.</title>
+<rect class="card" x="629.0" y="848" width="215.5" height="54" rx="9"/>
+<rect class="accent" x="629.0" y="858" width="3" height="34" rx="1.5"/>
+<circle cx="651.0" cy="875.0" r="7.5" fill="none" stroke="var(--todo)" stroke-width="1.6" stroke-dasharray="2.6 2.4"/>
+<text class="name" x="669.0" y="871">Node bin-packing</text>
+<text class="owner" x="669.0" y="888">KV clusters</text>
+</g>
+<rect class="band" x="24" y="948" width="1060" height="150" rx="12"/>
+<text class="lane-title" x="40" y="976">Data &amp; network</text>
+<text class="lane-title" x="40" y="993">services</text>
+<text class="lane-sub" x="40" y="1011">Inventory, networks</text>
+<text class="lane-sub" x="40" y="1025">and boot</text>
+<g class="chip s-done">
+<title>server-scan · Done
+Inventory of record, install lock, zone from the ACI leaf.</title>
+<rect class="card" x="174.0" y="964" width="215.5" height="54" rx="9"/>
+<rect class="accent" x="174.0" y="974" width="3" height="34" rx="1.5"/>
+<circle cx="196.0" cy="991.0" r="9" fill="var(--good)"/><path d="M192.2,991.2 L194.9,994.0 L200.0,988.2" fill="none" stroke="#ffffff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+<text class="name" x="214.0" y="987">server-scan</text>
+<text class="owner" x="214.0" y="1004">server-scan</text>
+</g>
+<g class="chip s-done">
+<title>segments-manager · Done
+Per-site VLAN segments and who holds them.</title>
+<rect class="card" x="401.5" y="964" width="215.5" height="54" rx="9"/>
+<rect class="accent" x="401.5" y="974" width="3" height="34" rx="1.5"/>
+<circle cx="423.5" cy="991.0" r="9" fill="var(--good)"/><path d="M419.7,991.2 L422.4,994.0 L427.5,988.2" fill="none" stroke="#ffffff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+<text class="name" x="441.5" y="987">segments-manager</text>
+<text class="owner" x="441.5" y="1004">segments-manager</text>
+</g>
+<g class="chip s-done">
+<title>DHCP scope manager · Done
+DHCP scopes, created by Crossplane from day1.</title>
+<rect class="card" x="629.0" y="964" width="215.5" height="54" rx="9"/>
+<rect class="accent" x="629.0" y="974" width="3" height="34" rx="1.5"/>
+<circle cx="651.0" cy="991.0" r="9" fill="var(--good)"/><path d="M647.2,991.2 L649.9,994.0 L655.0,988.2" fill="none" stroke="#ffffff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+<text class="name" x="669.0" y="987">DHCP scope manager</text>
+<text class="owner" x="669.0" y="1004">dhcp_scope_manager</text>
+</g>
+<g class="chip s-done">
+<title>PXE map API · Done
+Boot entries for servers without virtual media.</title>
+<rect class="card" x="856.5" y="964" width="215.5" height="54" rx="9"/>
+<rect class="accent" x="856.5" y="974" width="3" height="34" rx="1.5"/>
+<circle cx="878.5" cy="991.0" r="9" fill="var(--good)"/><path d="M874.7,991.2 L877.4,994.0 L882.5,988.2" fill="none" stroke="#ffffff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+<text class="name" x="896.5" y="987">PXE map API</text>
+<text class="owner" x="896.5" y="1004">pxe-map-api</text>
+</g>
+<g class="chip s-external">
+<title>Cisco ACI · External
+The physical leaf a server is cabled to gives its zone.</title>
+<rect class="card" x="174.0" y="1028" width="215.5" height="54" rx="9"/>
+<rect class="accent" x="174.0" y="1038" width="3" height="34" rx="1.5"/>
+<circle cx="196.0" cy="1055.0" r="7.5" fill="none" stroke="var(--muted)" stroke-width="1.6"/><circle cx="196.0" cy="1055.0" r="2.2" fill="var(--muted)"/>
+<text class="name" x="214.0" y="1051">Cisco ACI</text>
+<text class="owner" x="214.0" y="1068">network</text>
+</g>
+<rect class="band" x="24" y="1128" width="1060" height="86" rx="12"/>
+<text class="lane-title" x="40" y="1156">Controllers &amp;</text>
+<text class="lane-title" x="40" y="1173">policies</text>
+<text class="lane-sub" x="40" y="1191">Keep capacity ahead</text>
+<text class="lane-sub" x="40" y="1205">of demand</text>
+<g class="chip s-partial">
+<title>Inventory Controller · In progress
+herzi: built, in dry run on every pool, never run against a real hub.</title>
+<rect class="card" x="174.0" y="1144" width="215.5" height="54" rx="9"/>
+<rect class="accent" x="174.0" y="1154" width="3" height="34" rx="1.5"/>
+<circle class="pulse" cx="196.0" cy="1171.0" r="8"/><circle cx="196.0" cy="1171.0" r="8" fill="var(--card)" stroke="var(--warn)" stroke-width="2"/><path d="M196.0,1163.0 A8,8 0 0 1 196.0,1179.0 Z" fill="var(--warn)"/>
+<text class="name" x="214.0" y="1167">Inventory Controller</text>
+<text class="owner" x="214.0" y="1184">herzi</text>
+</g>
+<g class="chip s-todo">
+<title>Used-Agent collector · Not started
+Collects claimed, unbound Agents (naming convention §5). Proposed in herzi#1.</title>
+<rect class="card" x="401.5" y="1144" width="215.5" height="54" rx="9"/>
+<rect class="accent" x="401.5" y="1154" width="3" height="34" rx="1.5"/>
+<circle cx="423.5" cy="1171.0" r="7.5" fill="none" stroke="var(--todo)" stroke-width="1.6" stroke-dasharray="2.6 2.4"/>
+<text class="name" x="441.5" y="1167">Used-Agent collector</text>
+<text class="owner" x="441.5" y="1184">herzi</text>
+</g>
+<g class="chip s-todo">
+<title>Claim-marking policy · Not started
+Labels an Agent redbull.io/claimed when it is bound.</title>
+<rect class="card" x="629.0" y="1144" width="215.5" height="54" rx="9"/>
+<rect class="accent" x="629.0" y="1154" width="3" height="34" rx="1.5"/>
+<circle cx="651.0" cy="1171.0" r="7.5" fill="none" stroke="var(--todo)" stroke-width="1.6" stroke-dasharray="2.6 2.4"/>
+<text class="name" x="669.0" y="1167">Claim-marking policy</text>
+<text class="owner" x="669.0" y="1184">Kyverno on each MCE</text>
+</g>
+<g class="chip s-todo">
+<title>KV Capacity Controller · Not started
+AD27/AD28: grows the active KV cluster, keeps a standby. Specification only.</title>
+<rect class="card" x="856.5" y="1144" width="215.5" height="54" rx="9"/>
+<rect class="accent" x="856.5" y="1154" width="3" height="34" rx="1.5"/>
+<circle cx="878.5" cy="1171.0" r="7.5" fill="none" stroke="var(--todo)" stroke-width="1.6" stroke-dasharray="2.6 2.4"/>
+<text class="name" x="896.5" y="1167">KV Capacity Controller</text>
+<text class="owner" x="896.5" y="1184">Seed</text>
+</g>
+<path class="flow" d="M46,253 L46,277" marker-end="url(#arrow)"/>
+<text class="flow-l" x="58" y="269.0">starts</text>
+<path class="flow" d="M46,561 L46,585" marker-end="url(#arrow)"/>
+<text class="flow-l" x="58" y="577.0">commits</text>
+<path class="flow" d="M46,741 L46,765" marker-end="url(#arrow)"/>
+<text class="flow-l" x="58" y="757.0">applies</text>
+<path class="flow" d="M46,921 L46,945" marker-end="url(#arrow)"/>
+<text class="flow-l" x="58" y="937.0">reports</text>
+<path class="flow" d="M1086,349.5 L1096,349.5 Q1106,349.5 1106,359.5 L1106,833.0 Q1106,843.0 1096,843.0 L1088,843.0" marker-end="url(#arrow)"/>
+<text class="flow-l" text-anchor="middle" transform="translate(1110,596.2) rotate(-90)">direct API: machines, VMs</text>
+<path class="flow" d="M1086,419.0 L1124,419.0 Q1134,419.0 1134,429.0 L1134,1013.0 Q1134,1023.0 1124,1023.0 L1088,1023.0" marker-end="url(#arrow)"/>
+<text class="flow-l" text-anchor="middle" transform="translate(1138,721.0) rotate(-90)">reads · locks · allocates</text>
+<path class="flow" d="M1086,1171.0 L1152,1171.0 Q1162,1171.0 1162,1161.0 L1162,498.5 Q1162,488.5 1152,488.5 L1088,488.5" marker-end="url(#arrow)"/>
+<text class="flow-l" text-anchor="middle" transform="translate(1166,829.8) rotate(-90)">orders</text>
+<text class="small" x="24" y="1236">Edit docs/status/components.json, then run python3 docs/status/_generate.py</text>
+</svg>

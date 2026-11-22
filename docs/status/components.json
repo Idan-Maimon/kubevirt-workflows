@@ -1,0 +1,341 @@
+{
+  "title": "OCP KubeVirt platform: build status",
+  "updated": "2026-11-22",
+  "statuses": {
+    "done": {
+      "label": "Done"
+    },
+    "partial": {
+      "label": "In progress"
+    },
+    "todo": {
+      "label": "Not started"
+    },
+    "external": {
+      "label": "External"
+    }
+  },
+  "lanes": [
+    {
+      "id": "people",
+      "title": "People & portal",
+      "subtitle": "Self-service and operations",
+      "components": [
+        {
+          "name": "Tenant / SRE",
+          "owner": "people",
+          "status": "external",
+          "note": "Tenants request clusters and changes; SREs operate the platform."
+        },
+        {
+          "name": "Wingman portal",
+          "owner": "LiadYahav/wingman",
+          "status": "partial",
+          "note": "Live on the sandbox. Workflow-backed create, upgrades and add-servers are behind flags, off by default. No tenant role yet.",
+          "link": "https://github.com/LiadYahav/wingman"
+        }
+      ]
+    },
+    {
+      "id": "workflows",
+      "title": "Workflows",
+      "subtitle": "Temporal: every multi-step change",
+      "components": [
+        {
+          "name": "Temporal orchestrator",
+          "owner": "team-redbull/workflows",
+          "status": "done",
+          "note": "The brain, the per-domain workers and the trigger API.",
+          "link": "https://github.com/team-redbull/workflows"
+        },
+        {
+          "name": "add-server-to-mce",
+          "owner": "team-redbull/workflows",
+          "status": "partial",
+          "note": "Bare metal done. Not yet: the create-vm child for VM pools (AD29), and the draw built from the MCE's site and the zone filter under the new InfraEnv names.",
+          "link": "https://github.com/team-redbull/workflows"
+        },
+        {
+          "name": "remove-server-from-mce",
+          "owner": "team-redbull/workflows",
+          "status": "done",
+          "note": "Power off, BareMetalHost, NMStateConfig, Agent, PXE map.",
+          "link": "https://github.com/team-redbull/workflows"
+        },
+        {
+          "name": "uninstall-server-from-hc",
+          "owner": "team-redbull/workflows",
+          "status": "done",
+          "note": "Takes a node out of its hosted cluster; ends at a free Agent.",
+          "link": "https://github.com/team-redbull/workflows"
+        },
+        {
+          "name": "publish-infraenv-to-pxe",
+          "owner": "team-redbull/workflows",
+          "status": "done",
+          "note": "publish-infraenv-to-pxe-server: republishes an InfraEnv's boot entry.",
+          "link": "https://github.com/team-redbull/workflows"
+        },
+        {
+          "name": "provision-dell-server",
+          "owner": "team-redbull/workflows",
+          "status": "partial",
+          "note": "Built; its worker is not deployed.",
+          "link": "https://github.com/team-redbull/workflows"
+        },
+        {
+          "name": "segment workflows",
+          "owner": "team-redbull/workflows",
+          "status": "done",
+          "note": "initialize-segment, allocate-segment, release-segment.",
+          "link": "https://github.com/team-redbull/workflows"
+        },
+        {
+          "name": "provision-cluster",
+          "owner": "team-redbull/workflows",
+          "status": "partial",
+          "note": "On main; its worker chart is not yet deployed, and Wingman's switch to it is off by default.",
+          "link": "https://github.com/team-redbull/workflows"
+        },
+        {
+          "name": "update-nodepool",
+          "owner": "team-redbull/workflows",
+          "status": "partial",
+          "note": "On branch feat/update-nodepool, not merged. Assessment findings open (release per AD23, named node, floor).",
+          "link": "https://github.com/team-redbull/workflows/tree/feat/update-nodepool"
+        },
+        {
+          "name": "create-vm",
+          "owner": "team-redbull/workflows",
+          "status": "partial",
+          "note": "Redesign in review (workflows#26): a worker in each KV cluster and a zone lock. The deployed version cannot succeed: no agents.",
+          "link": "https://github.com/team-redbull/workflows/pull/26"
+        },
+        {
+          "name": "KV zone lock",
+          "owner": "team-redbull/workflows",
+          "status": "todo",
+          "note": "One placement at a time per zone (AD32). In the create-vm design.",
+          "link": "https://github.com/team-redbull/workflows/pull/26"
+        },
+        {
+          "name": "upgrade-cluster",
+          "owner": "team-redbull/workflows",
+          "status": "partial",
+          "note": "Sandbox only, not production.",
+          "link": "https://github.com/team-redbull/workflows"
+        },
+        {
+          "name": "deprovision-cluster",
+          "owner": "team-redbull/workflows",
+          "status": "todo",
+          "note": "Planned. Today an ArgoCD PostDelete hook releases the segment."
+        }
+      ]
+    },
+    {
+      "id": "desired",
+      "title": "Desired state",
+      "subtitle": "Git holds it, ArgoCD applies it",
+      "components": [
+        {
+          "name": "day1 repo",
+          "owner": "gitops-day1-platform-config",
+          "status": "done",
+          "note": "One file per hosted cluster: NodePools, versions, network.",
+          "link": "https://github.com/team-redbull/gitops-day1-platform-config"
+        },
+        {
+          "name": "day2 sig repos",
+          "owner": "gitops-day2-prod",
+          "status": "done",
+          "note": "Per-team add-ons on every cluster kind.",
+          "link": "https://github.com/team-redbull/gitops-day2-prod"
+        },
+        {
+          "name": "hostedclusters-setup",
+          "owner": "helm-charts-hostedclusters-setup",
+          "status": "partial",
+          "note": "Not yet rendered: the redbull.io/claimed exclusion, InfraEnv agentLabels, zone nodeLabels. NodePool annotations: PR #4 open.",
+          "link": "https://github.com/team-redbull/helm-charts-hostedclusters-setup/pull/4"
+        },
+        {
+          "name": "ArgoCD",
+          "owner": "team-redbull/redbull-platform",
+          "status": "done",
+          "note": "The only applicator of desired state.",
+          "link": "https://github.com/team-redbull/redbull-platform"
+        },
+        {
+          "name": "Capacity policy file",
+          "owner": "platform repo",
+          "status": "todo",
+          "note": "AD31: maxNodes, freeCpuPercent, standby sizes, read by placement and the KV Capacity Controller alike."
+        }
+      ]
+    },
+    {
+      "id": "clusters",
+      "title": "Clusters",
+      "subtitle": "Where control planes and workers run",
+      "components": [
+        {
+          "name": "Customer MCE hubs",
+          "owner": "platform",
+          "status": "done",
+          "note": "Tenant hubs running HyperShift and the Agent installer."
+        },
+        {
+          "name": "Tenant hosted clusters",
+          "owner": "platform",
+          "status": "done",
+          "note": "Hosted control planes on the MCE; workers from InfraEnv pools."
+        },
+        {
+          "name": "Seed clusters",
+          "owner": "platform",
+          "status": "todo",
+          "note": "One bare-metal seed per zone (AD17). Its day1 folders do not exist yet."
+        },
+        {
+          "name": "KV clusters",
+          "owner": "platform",
+          "status": "partial",
+          "note": "Proven in the lab only."
+        },
+        {
+          "name": "vm-lifecycle-worker",
+          "owner": "team-redbull/workflows",
+          "status": "todo",
+          "note": "One per KV cluster: reports capacity and builds VMs, with its ConfigMap (cluster, site, VLAN, MAC prefix).",
+          "link": "https://github.com/team-redbull/workflows/pull/26"
+        },
+        {
+          "name": "kubevirt-redfish",
+          "owner": "team-redbull/kubevirt-redfish",
+          "status": "done",
+          "note": "Exposes each VM as a Redfish system, so it installs like bare metal.",
+          "link": "https://github.com/team-redbull/kubevirt-redfish"
+        },
+        {
+          "name": "Node bin-packing",
+          "owner": "KV clusters",
+          "status": "todo",
+          "note": "AD30: HighNodeUtilization and CompactAndScale. Not confirmed on any KV cluster."
+        }
+      ]
+    },
+    {
+      "id": "services",
+      "title": "Data & network services",
+      "subtitle": "Inventory, networks and boot",
+      "components": [
+        {
+          "name": "server-scan",
+          "owner": "team-redbull/server-scan",
+          "status": "done",
+          "note": "Inventory of record, install lock, zone from the ACI leaf.",
+          "link": "https://github.com/team-redbull/server-scan"
+        },
+        {
+          "name": "segments-manager",
+          "owner": "team-redbull/segments-manager",
+          "status": "done",
+          "note": "Per-site VLAN segments and who holds them.",
+          "link": "https://github.com/team-redbull/segments-manager"
+        },
+        {
+          "name": "DHCP scope manager",
+          "owner": "team-redbull/dhcp_scope_manager",
+          "status": "done",
+          "note": "DHCP scopes, created by Crossplane from day1.",
+          "link": "https://github.com/team-redbull/dhcp_scope_manager"
+        },
+        {
+          "name": "PXE map API",
+          "owner": "team-redbull/pxe-map-api",
+          "status": "done",
+          "note": "Boot entries for servers without virtual media.",
+          "link": "https://github.com/team-redbull/pxe-map-api"
+        },
+        {
+          "name": "Cisco ACI",
+          "owner": "network",
+          "status": "external",
+          "note": "The physical leaf a server is cabled to gives its zone."
+        }
+      ]
+    },
+    {
+      "id": "controllers",
+      "title": "Controllers & policies",
+      "subtitle": "Keep capacity ahead of demand",
+      "components": [
+        {
+          "name": "Inventory Controller",
+          "owner": "team-redbull/herzi",
+          "status": "partial",
+          "note": "herzi: built, in dry run on every pool, never run against a real hub.",
+          "link": "https://github.com/team-redbull/herzi"
+        },
+        {
+          "name": "Used-Agent collector",
+          "owner": "team-redbull/herzi",
+          "status": "todo",
+          "note": "Collects claimed, unbound Agents (naming convention §5). Proposed in herzi#1.",
+          "link": "https://github.com/team-redbull/herzi/pull/1"
+        },
+        {
+          "name": "Claim-marking policy",
+          "owner": "Kyverno on each MCE",
+          "status": "todo",
+          "note": "Labels an Agent redbull.io/claimed when it is bound."
+        },
+        {
+          "name": "KV Capacity Controller",
+          "owner": "Seed",
+          "status": "todo",
+          "note": "AD27/AD28: grows the active KV cluster, keeps a standby. Specification only.",
+          "link": "https://github.com/Idan-Maimon/kubevirt-workflows/blob/main/docs/kv-capacity-controller.md"
+        }
+      ]
+    }
+  ],
+  "flows": [
+    {
+      "from": "people",
+      "to": "workflows",
+      "label": "starts"
+    },
+    {
+      "from": "workflows",
+      "to": "desired",
+      "label": "commits"
+    },
+    {
+      "from": "desired",
+      "to": "clusters",
+      "label": "applies"
+    },
+    {
+      "from": "clusters",
+      "to": "services",
+      "label": "reports"
+    },
+    {
+      "from": "controllers",
+      "to": "workflows",
+      "label": "orders"
+    },
+    {
+      "from": "workflows",
+      "to": "services",
+      "label": "reads · locks · allocates"
+    },
+    {
+      "from": "workflows",
+      "to": "clusters",
+      "label": "direct API: machines, VMs"
+    }
+  ]
+}
