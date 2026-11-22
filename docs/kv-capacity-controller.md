@@ -19,7 +19,7 @@ Decisions: AD27, AD28, AD30, AD31 in [architecture.md](architecture.md).
 
 | Not this controller | Owner |
 |---|---|
-| Choosing the KV cluster for a VM, and creating it | `create-vm` workflow ([vm-placement.md](vm-placement.md)) |
+| Choosing the KV cluster for a VM, and creating it | `create-vm` workflow ([design](https://github.com/team-redbull/workflows/blob/docs/create-vm-placement/docs/design/create-vm-placement.md)) |
 | Keeping bare-metal Agents ready for a raised NodePool | herzi on the Seed ([inventory-controller.md](inventory-controller.md)) |
 | Writing a NodePool total | `update-nodepool` workflow (Git, AD22) |
 | Creating a KV cluster | `provision-cluster` workflow (Git, AD22) |
@@ -81,7 +81,7 @@ Read from the Seed:
 
 Read from each KV cluster through its admin kubeconfig, which lives on the Seed beside the
 cluster's hosted control plane. Capacity is computed with **the same rules `create-vm`'s
-placement uses** ([vm-placement.md](vm-placement.md), "Capacity"), so placement and growth count
+placement uses** ([design](https://github.com/team-redbull/workflows/blob/docs/create-vm-placement/docs/design/create-vm-placement.md), §6), so placement and growth count
 used CPU the same way (AD31).
 
 | Read | Used for |
