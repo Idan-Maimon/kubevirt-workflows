@@ -83,8 +83,7 @@ When `need` is above zero, the controller orders that many machines.
   A claim that no pool can satisfy is reported as unsatisfiable, naming its NodePool and selector.
 - **Each NodePool's supply depends on its own claims.** A NodePool slow to release machines, such
   as one held by a PodDisruptionBudget, leaves every other NodePool's supply intact.
-- **Spares stay in the pool until claimed.** The pool grows only (AD26); used Agents leave it
-  through R3.
+- **Spares stay in the pool until claimed** (AD26); used Agents leave it through R3.
 - **Each pass starts from what the hub shows,** so a restart costs one pass.
 
 ### Sizing the spares
@@ -164,7 +163,7 @@ When a used Agent is free again, the controller removes its server from the MCE.
 | **Starts in dry run** | `dryRunCollect: true` logs the removals it would start |
 | **Watched** | Metrics, events, and an alert for a used Agent that is not collected |
 
-This reopens AD26's "only adds" for used Agents only. A fresh Agent is never removed.
+A fresh Agent is never removed; only used Agents are collected (AD34).
 
 ---
 
@@ -212,7 +211,6 @@ The collector's grace period and its limit of removals open per pool are set in 
 - **A claim that several pools can satisfy:** which pool the controller orders from, when a
   NodePool's selector matches more than one InfraEnv. How InfraEnvs are ranked is not decided.
 - **The spares per pool:** the starting number for each machine type.
-- **AD26** in `architecture.md` still says the controller only adds; it needs the used-Agent exception.
 - **VM pools: decided, not built.** `add-server-to-mce` starts `create-vm` as a child for a VM
   InfraEnv (AD29).
 - **Live rollout.** herzi has not run against a real hub, and every pool defaults to dry run.

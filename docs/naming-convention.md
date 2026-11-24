@@ -266,8 +266,7 @@ Machine, a repair replacing a node, `uninstall-server-from-hc`, a deleted cluste
 **What it simplifies:** `update-nodepool` no longer releases machines. A scale-down marks the
 Machine only when the customer picked it, commits the count, syncs, and checks the deleting set.
 
-**What it changes in the architecture:** AD26 says the Inventory Controller only adds. Collecting
-used machines is a new responsibility, to be stated as an amendment or a new AD.
+**In the architecture:** AD34.
 
 **One label instead of two:** `claimed` replaces `redbull.io/uninstalling`, since every machine
 being uninstalled was claimed first.
@@ -283,9 +282,8 @@ being uninstalled was claimed first.
 | 3 | The hostedclusters-setup chart rendering `agentLabels`, the selector and `nodeLabels` |
 | 4 | The Inventory Controller labelling bound Agents |
 | 5 | The Inventory Controller's collection loop |
-| 6 | AD26 amendment, or a new AD, for collection |
-| 7 | How Customer MCE Nodes get their zone label: kubelet node labels per zone, or labels at install |
-| 8 | Site names of at most 6 characters, or a shortened serial, so Cisco bare-metal names stay within 32 |
-| 9 | `create-vm` building VM names as `ocp-<flavor>-kv<cpu>-<site>-<full MAC>`; today it builds `ocp-<InfraEnv>-<6 hex>`, which would include the zone, leave out the site, and carry only half the MAC |
-| 10 | `provision-cluster` or day1 CI refusing a KV cluster file whose NodePools do not all carry one identical zone label, equal to the zone in the cluster's name |
-| 11 | Updating architecture §9 to this convention once agreed |
+| 6 | How Customer MCE Nodes get their zone label: kubelet node labels per zone, or labels at install |
+| 7 | Site names of at most 6 characters, or a shortened serial, so Cisco bare-metal names stay within 32 |
+| 8 | `create-vm` building VM names as `ocp-<flavor>-kv<cpu>-<site>-<full MAC>`; today it builds `ocp-<InfraEnv>-<6 hex>`, which would include the zone, leave out the site, and carry only half the MAC |
+| 9 | `provision-cluster` or day1 CI refusing a KV cluster file whose NodePools do not all carry one identical zone label, equal to the zone in the cluster's name |
+| 10 | Updating architecture §9 to this convention once agreed |
