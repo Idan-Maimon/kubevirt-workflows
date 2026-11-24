@@ -19,5 +19,6 @@ click through to its repository.
 |---|---|
 | [Architecture](docs/architecture.md) | Requirements, quality goals, constraints, decisions, risks |
 | [Naming convention](docs/naming-convention.md) | Names, zones and labels |
+| [Acceptance tests](acceptance-tests/acceptance-tests.md) | Provisioning, modification, upgrade and deletion tests, with their acceptance criteria |
 | [Procedures](docs/procedures/README.md) | Every platform procedure, by layer |
 | [Animations](https://idan-maimon.github.io/kubevirt-workflows/docs/animations/) | Each procedure, step by step |
