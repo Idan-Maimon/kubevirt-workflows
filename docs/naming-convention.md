@@ -158,6 +158,9 @@ spec:
 
 ```yaml
 # NodePool of a cluster, for az1
+metadata:
+  labels:
+    redbull.io/inventory-managed: "true"
 spec:
   platform:
     agent:
@@ -178,12 +181,14 @@ spec:
 | `topology.kubernetes.io/zone` on the Agent | Each zone's NodePool claims only Agents of its zone |
 | `topology.kubernetes.io/zone` on the Node (`nodeLabels`) | Tenant workloads spread across zones with `topologySpreadConstraints` (AD7) |
 | `redbull.io/claimed DoesNotExist` | An Agent that has ever served a cluster is never claimed again by any NodePool (section 5). Adding it changes the NodePool's template hash, so confirm the NodePool is `InPlace` before rollout |
+| `redbull.io/inventory-managed: "true"` on the NodePool | The Inventory Controller watches the NodePools carrying it, and orders machines for their waiting workers (`docs/inventory-controller.md`). Set by the hostedclusters-setup chart on every NodePool it renders |
 
 #### Where each label lives, MCE side
 
 | Object | Labels | Set by | Read by |
 |---|---|---|---|
-| **Agent** | `redbull.io/flavor`, `redbull.io/size`, `redbull.io/site`, `topology.kubernetes.io/zone`, `redbull.io/claimed` | The InfraEnv's `agentLabels`; `claimed` at claim time (section 5) | NodePool selectors |
+| **Agent** | `redbull.io/flavor`, `redbull.io/size`, `redbull.io/site`, `topology.kubernetes.io/zone`, `redbull.io/claimed` | The InfraEnv's `agentLabels`; `claimed` by the Inventory Controller (section 5) | NodePool selectors |
+| **NodePool** | `redbull.io/inventory-managed: "true"` | The hostedclusters-setup chart, on every NodePool it renders | The Inventory Controller |
 | **Tenant Node** | `topology.kubernetes.io/zone` | The NodePool's `nodeLabels` | The tenant's scheduler: `topologySpreadConstraints` (AD7) |
 | **Customer MCE Node** | `topology.kubernetes.io/zone` | Per-zone kubelet node labels (a MachineConfig per zone), or labels set at install, from the KV cluster's zone | The MCE's scheduler: hosted control planes spread their etcd and API servers across zones, and the rule does nothing without this label |
 
@@ -230,11 +235,11 @@ not known until it is claimed.
 ## 5. Claimed Agents and garbage collection
 
 A machine that has served a cluster is never reused as it is (AD23). Instead of each workflow
-releasing the machines it frees, **every Agent is marked when it is claimed, and the Inventory
-Controller collects marked Agents once they are free.**
+releasing the machines it frees, **the Inventory Controller marks every Agent bound to a cluster,
+and collects marked Agents once they are free.**
 
 ```
-Agent bound to a cluster  ->  label redbull.io/claimed=true  (at claim time)
+Agent bound to a cluster  ->  label redbull.io/claimed=true  (by the Inventory Controller)
              |
              v  the machine leaves the cluster, by any path
 Agent free again, still labelled  ->  no NodePool can claim it (selector, section 4)
@@ -246,8 +251,8 @@ Inventory Controller: claimed + unbound  ->  remove-server-from-mce, then destro
 | # | Rule | Owner |
 |---|---|---|
 | 1 | **A label, not an annotation.** A NodePool's `agentLabelSelector` selects labels only | — |
-| 2 | **Marked at claim time,** when an Agent's `spec.clusterDeploymentName` goes from empty to set, by an admission policy on the MCE (Kyverno, already shipped to MCEs through day2). The mark exists long before the Agent is free again, so there is no race | Kyverno policy |
-| 3 | **Backstop:** the Inventory Controller labels any bound Agent it finds unmarked, and alerts | Inventory Controller |
+| 2 | **Marked by the Inventory Controller** on every pass: each Agent bound to a cluster (`spec.clusterDeploymentName` set) gets the label. Labelling a bound Agent is safe, and the mark stays until the Agent is deleted | Inventory Controller |
+| 3 | **A missed label is caught:** an Agent showing evidence of an unbind (the `Unbinding` condition reason, the `unbinding` or `reclaiming` states, or `status.deprovision_info`) is treated as used, with or without the label | Inventory Controller |
 | 4 | **Every NodePool excludes the label** (`redbull.io/claimed DoesNotExist`). The provider applies the selector only when it picks a free Agent, so a bound Agent's running node is not affected | hostedclusters-setup chart |
 | 5 | **Collect:** Agents labelled `claimed`, unbound (no `clusterDeploymentName`, no AgentMachine), not deleting, unchanged for a grace period | Inventory Controller |
 | 6 | **Act through a workflow:** start `remove-server-from-mce-<server>`, then destroy a VM; bare metal returns to server-scan for reinstall. The id is the server, so a repeat, or `uninstall-server-from-hc`'s own child, is a 409, not a duplicate | Inventory Controller |
@@ -276,8 +281,8 @@ being uninstalled was claimed first.
 | 1 | Definition of variant `x` |
 | 2 | Whether server-scan's availability query can already filter by zone |
 | 3 | The hostedclusters-setup chart rendering `agentLabels`, the selector and `nodeLabels` |
-| 4 | The Kyverno policy marking Agents at claim time |
-| 5 | The Inventory Controller's collection loop (herzi) |
+| 4 | The Inventory Controller labelling bound Agents |
+| 5 | The Inventory Controller's collection loop |
 | 6 | AD26 amendment, or a new AD, for collection |
 | 7 | How Customer MCE Nodes get their zone label: kubelet node labels per zone, or labels at install |
 | 8 | Site names of at most 6 characters, or a shortened serial, so Cisco bare-metal names stay within 32 |
