@@ -120,7 +120,7 @@
 
 ### 7.1 Static Deployment View
 
-![Deployment View](deployment-view.png)
+![Deployment View](images/deployment-view.png)
 
 ### 7.2 Runtime Views
 
