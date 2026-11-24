@@ -281,8 +281,8 @@ def render_svg(data: dict, theme_name: str | None, interactive: bool = False) ->
         out.append(f'<text class="flow-l" text-anchor="middle" transform="translate({xk + 4},{mid:.1f}) '
                    f'rotate(-90)">{escape(f["label"])}</text>')
 
-    out.append(f'<text class="small" x="{M}" y="{H - 14:.0f}">Edit docs/status/components.json, then run '
-               f'python3 docs/status/_generate.py</text>')
+    out.append(f'<text class="small" x="{M}" y="{H - 14:.0f}">Edit docs/implementation-status/components.json, then run '
+               f'python3 docs/implementation-status/_generate.py</text>')
     out.append("</svg>")
     return "\n".join(out)
 

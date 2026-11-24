@@ -1,17 +1,17 @@
 # OCP KubeVirt platform
 
-<a href="https://idan-maimon.github.io/kubevirt-workflows/docs/status/">
+<a href="https://idan-maimon.github.io/kubevirt-workflows/docs/implementation-status/">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="docs/status/status-dark.svg">
-    <img alt="OCP KubeVirt platform build status" src="docs/status/status-light.svg">
+    <source media="(prefers-color-scheme: dark)" srcset="docs/implementation-status/status-dark.svg">
+    <img alt="OCP KubeVirt platform build status" src="docs/implementation-status/status-light.svg">
   </picture>
 </a>
 
 Click the diagram for the interactive version: hover a component for its details, filter by status,
 click through to its repository.
 
-**Updating the status:** edit [`docs/status/components.json`](docs/status/components.json), then run
-`python3 docs/status/_generate.py` and commit the regenerated files.
+**Updating the status:** edit [`docs/implementation-status/components.json`](docs/implementation-status/components.json), then run
+`python3 docs/implementation-status/_generate.py` and commit the regenerated files.
 
 ## Documents
 

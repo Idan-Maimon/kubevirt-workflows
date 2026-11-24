@@ -1,4 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1250" width="1200" height="1250" class="t viz light" style="--page:#f9f9f7;--band:#f1f0ec;--card:#ffffff;--ink:#0b0b0b;--ink2:#52514e;--muted:#898781;--hair:rgba(11,11,11,0.10);--track:#e1e0d9;--good:#0ca30c;--warn:#fab219;--todo:#898781" role="img" aria-labelledby="t d">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1250" width="1200" height="1250" class="t viz dark" style="--page:#0d0d0d;--band:#1a1a19;--card:#242422;--ink:#f0efec;--ink2:#c3c2b7;--muted:#898781;--hair:rgba(255,255,255,0.10);--track:#2c2c2a;--good:#0ca30c;--warn:#fab219;--todo:#898781" role="img" aria-labelledby="t d">
 <title id="t">OCP KubeVirt platform: build status</title>
 <desc id="d">15 done, 10 partial, 9 not started, of 34 components, as of 2026-11-22.</desc>
 <style>
@@ -408,5 +408,5 @@ AD27/AD28: grows the active KV cluster, keeps a standby. Specification only.</ti
 <text class="flow-l" text-anchor="middle" transform="translate(1138,721.0) rotate(-90)">reads · locks · allocates</text>
 <path class="flow" d="M1086,1171.0 L1152,1171.0 Q1162,1171.0 1162,1161.0 L1162,498.5 Q1162,488.5 1152,488.5 L1088,488.5" marker-end="url(#arrow)"/>
 <text class="flow-l" text-anchor="middle" transform="translate(1166,829.8) rotate(-90)">orders</text>
-<text class="small" x="24" y="1236">Edit docs/status/components.json, then run python3 docs/status/_generate.py</text>
+<text class="small" x="24" y="1236">Edit docs/implementation-status/components.json, then run python3 docs/implementation-status/_generate.py</text>
 </svg>
