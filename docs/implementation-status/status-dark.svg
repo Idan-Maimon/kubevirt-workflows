@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1250" width="1200" height="1250" class="t viz dark" style="--page:#0d0d0d;--band:#1a1a19;--card:#242422;--ink:#f0efec;--ink2:#c3c2b7;--muted:#898781;--hair:rgba(255,255,255,0.10);--track:#2c2c2a;--good:#0ca30c;--warn:#fab219;--todo:#898781" role="img" aria-labelledby="t d">
 <title id="t">OCP KubeVirt platform: build status</title>
-<desc id="d">15 done, 10 partial, 9 not started, of 34 components, as of 2026-11-22.</desc>
+<desc id="d">15 done, 10 partial, 9 not started, of 34 components, as of 2026-11-25.</desc>
 <style>
 .t{font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
 .title{font-size:24px;font-weight:650;fill:var(--ink)}
@@ -31,7 +31,7 @@
 <defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 Z" fill="var(--muted)"/></marker></defs>
 <rect width="1200" height="1250" fill="var(--page)"/>
 <text class="title" x="24" y="50">OCP KubeVirt platform: build status</text>
-<text class="sub" x="24" y="76">Status as of 2026-11-22 · 34 components</text>
+<text class="sub" x="24" y="76">Status as of 2026-11-25 · 34 components</text>
 <g class="s-done"><circle cx="33" cy="106" r="9" fill="var(--good)"/><path d="M29.2,106.2 L31.9,109 L37,103.2" fill="none" stroke="#ffffff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><text class="tile-l" x="48" y="110">Done</text></g>
 <g class="s-partial"><circle class="pulse" cx="94.6" cy="106" r="8"/><circle cx="94.6" cy="106" r="8" fill="var(--card)" stroke="var(--warn)" stroke-width="2"/><path d="M94.6,98 A8,8 0 0 1 94.6,114 Z" fill="var(--warn)"/><text class="tile-l" x="109.6" y="110">In progress</text></g>
 <g class="s-todo"><circle cx="204.5" cy="106" r="7.5" fill="none" stroke="var(--todo)" stroke-width="1.6" stroke-dasharray="2.6 2.4"/><text class="tile-l" x="219.5" y="110">Not started</text></g>
@@ -354,10 +354,9 @@ The physical leaf a server is cabled to gives its zone.</title>
 <text class="owner" x="214.0" y="1068">network</text>
 </g>
 <rect class="band" x="24" y="1128" width="1060" height="86" rx="12"/>
-<text class="lane-title" x="40" y="1156">Controllers &amp;</text>
-<text class="lane-title" x="40" y="1173">policies</text>
-<text class="lane-sub" x="40" y="1191">Keep capacity ahead</text>
-<text class="lane-sub" x="40" y="1205">of demand</text>
+<text class="lane-title" x="40" y="1156">Controllers</text>
+<text class="lane-sub" x="40" y="1174">Keep capacity ahead</text>
+<text class="lane-sub" x="40" y="1188">of demand</text>
 <g class="chip s-partial">
 <title>Inventory Controller · In progress
 herzi: built, in dry run on every pool, never run against a real hub.</title>
@@ -369,7 +368,7 @@ herzi: built, in dry run on every pool, never run against a real hub.</title>
 </g>
 <g class="chip s-todo">
 <title>Used-Agent collector · Not started
-Collects claimed, unbound Agents (naming convention §5). Proposed in herzi#1.</title>
+AD34: collects claimed, unbound Agents through remove-server-from-mce. Proposed in herzi#1.</title>
 <rect class="card" x="401.5" y="1144" width="215.5" height="54" rx="9"/>
 <rect class="accent" x="401.5" y="1154" width="3" height="34" rx="1.5"/>
 <circle cx="423.5" cy="1171.0" r="7.5" fill="none" stroke="var(--todo)" stroke-width="1.6" stroke-dasharray="2.6 2.4"/>
@@ -377,17 +376,17 @@ Collects claimed, unbound Agents (naming convention §5). Proposed in herzi#1.</
 <text class="owner" x="441.5" y="1184">herzi</text>
 </g>
 <g class="chip s-todo">
-<title>Claim-marking policy · Not started
-Labels an Agent redbull.io/claimed when it is bound.</title>
+<title>Claimed-Agent tagging · Not started
+AD34: herzi labels every bound Agent redbull.io/claimed.</title>
 <rect class="card" x="629.0" y="1144" width="215.5" height="54" rx="9"/>
 <rect class="accent" x="629.0" y="1154" width="3" height="34" rx="1.5"/>
 <circle cx="651.0" cy="1171.0" r="7.5" fill="none" stroke="var(--todo)" stroke-width="1.6" stroke-dasharray="2.6 2.4"/>
-<text class="name" x="669.0" y="1167">Claim-marking policy</text>
-<text class="owner" x="669.0" y="1184">Kyverno on each MCE</text>
+<text class="name" x="669.0" y="1167">Claimed-Agent tagging</text>
+<text class="owner" x="669.0" y="1184">herzi</text>
 </g>
 <g class="chip s-todo">
 <title>KV Capacity Controller · Not started
-AD27/AD28: grows the active KV cluster, keeps a standby. Specification only.</title>
+AD27/AD28/AD35: grows the active KV cluster, keeps a standby. Specification only.</title>
 <rect class="card" x="856.5" y="1144" width="215.5" height="54" rx="9"/>
 <rect class="accent" x="856.5" y="1154" width="3" height="34" rx="1.5"/>
 <circle cx="878.5" cy="1171.0" r="7.5" fill="none" stroke="var(--todo)" stroke-width="1.6" stroke-dasharray="2.6 2.4"/>

@@ -1,6 +1,6 @@
 {
   "title": "OCP KubeVirt platform: build status",
-  "updated": "2026-11-22",
+  "updated": "2026-11-25",
   "statuses": {
     "done": {
       "label": "Done"
@@ -268,7 +268,7 @@
     },
     {
       "id": "controllers",
-      "title": "Controllers & policies",
+      "title": "Controllers",
       "subtitle": "Keep capacity ahead of demand",
       "components": [
         {
@@ -282,20 +282,20 @@
           "name": "Used-Agent collector",
           "owner": "team-redbull/herzi",
           "status": "todo",
-          "note": "Collects claimed, unbound Agents (naming convention §5). Proposed in herzi#1.",
+          "note": "AD34: collects claimed, unbound Agents through remove-server-from-mce. Proposed in herzi#1.",
           "link": "https://github.com/team-redbull/herzi/pull/1"
         },
         {
-          "name": "Claim-marking policy",
-          "owner": "Kyverno on each MCE",
+          "name": "Claimed-Agent tagging",
+          "owner": "team-redbull/herzi",
           "status": "todo",
-          "note": "Labels an Agent redbull.io/claimed when it is bound."
+          "note": "AD34: herzi labels every bound Agent redbull.io/claimed."
         },
         {
           "name": "KV Capacity Controller",
           "owner": "Seed",
           "status": "todo",
-          "note": "AD27/AD28: grows the active KV cluster, keeps a standby. Specification only.",
+          "note": "AD27/AD28/AD35: grows the active KV cluster, keeps a standby. Specification only.",
           "link": "https://github.com/Idan-Maimon/kubevirt-workflows/blob/main/docs/kv-capacity-controller.md"
         }
       ]
