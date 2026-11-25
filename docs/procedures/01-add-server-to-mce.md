@@ -2,209 +2,140 @@
 
 **Interfaces:** [`00-interfaces.md`](00-interfaces.md) — exact endpoints, payloads and resource bodies
 **Animation:** [`../animations/01-add-server-to-mce.html`](../animations/01-add-server-to-mce.html)
+**Implementation:** [`add_server_to_mce.py`](https://github.com/team-redbull/workflows/blob/main/workflow_domains/server_lifecycle/add_server_to_mce.py) in `team-redbull/workflows`
 
 | | |
 |---|---|
-| **Trigger** | Inventory Controller, when a pool is below target |
-| **Run id** | `install-server-<infraenv>_<slot>` — one run per machine, slots walked from `_1` |
-| **Runs on** | The hub's worker queue; the segments queue for the VLAN; the KV cluster's queue for a VM create |
-| **Scope** | Hub-agnostic (Customer MCE or Seed) and pool-agnostic (VM or BM) |
-| **Adds** | Exactly **one** Agent per run. Filling a pool is N runs, not one run doing N. |
-
-> **This supersedes a parent-and-children design.** Parallel fill is done with numbered
-> sibling runs rather than one workflow fanning out. See §4.2 for why, because the reasoning
-> matters more than the mechanism.
+| **Trigger** | The Inventory Controller, for each machine a pool needs ([inventory-controller.md](../inventory-controller.md), AD26), or an operator naming servers |
+| **Workflow id** | `add-server-to-mce-<mce>_<infraEnv>_<slot>` for a draw from the pool; `add-server-to-mce-<mce>_<server>` for a named server |
+| **Runs on** | The MCE's server-lifecycle queue; the segment-lifecycle queue for the VLAN; the `create-vm` child for a VM |
+| **Scope** | Every MCE hub, a Customer MCE or a Seed; bare-metal and VM pools alike (AD29) |
+| **Adds** | One Agent per run. A request for N machines starts N runs, one per slot |
 
 ---
 
 ## 1 :: Purpose
 
-Put one machine into a pool, where a pool is one InfraEnv: one hub, one node type, one zone.
+Put one machine into one pool. A pool is one InfraEnv, `<flavor>-<mtl|kv<cpu>>-<zone>`, on one MCE
+([naming convention](../naming-convention.md)). The run ends when the machine has booted the
+discovery image and registered as an Agent carrying the InfraEnv's labels, ready for a NodePool to
+claim.
 
-The run is the same for virtual and bare-metal pools because both end as an Agent. The only
-divergence is what happens when the draw comes back empty: a virtual pool can manufacture a
-machine, a bare-metal pool cannot.
+Bare metal and VMs take the same run (AD29). For a VM pool, the run first builds the VM through its
+`create-vm` child, then installs exactly that VM. A machine that has served a cluster comes back
+through `remove-server-from-mce` (AD34), and this run installs it again from scratch.
 
 ---
 
 ## 2 :: Inputs
 
-### Decided by the controller, not passed in
+### The request
 
-| | How |
-|---|---|
-| `target` | demand plus the watermark buffer. Never sent to this workflow; the controller converts it to a count. See §4.1. |
+`POST /workflows/server-lifecycle/add-server-to-mce`
 
-### Carried in the request
-
-| Field | Type | Required | Notes |
-|---|---|---|---|
-| `infra_env` | str | ✅ | The pool. Also the run id, and the hardware class the draw matches on. |
-| `mce_cluster` | str | ✅ | Canonical hub name, `ocp4-` prefixed. Selects the worker queue, and resolves the inventory VLAN. |
-| `count` | int | bulk only | How many **new** runs to start. See the warning in §4.1. |
-| `candidate_count` | int | ❌ | Defaults to `busy + count + 2`, capped at 20. Load-bearing: see §4.3. |
-| `labels` | dict | ❌ | Extra labels for the created resources |
-
-### Derived or configured, deliberately not inputs
-
-| | Where it comes from | Why not an input |
+| Field | Required | Notes |
 |---|---|---|
-| `namespace` | worker configuration, with a default | A property of the hub, not of the request. The caller should not have to know where InfraEnvs live. |
-| pool type, VM or BM | a label on the InfraEnv | The worker already reads that object for the image check. Reading a label beats parsing a name. |
-| VM size | the node type, which is in the InfraEnv name | The node type **is** the profile. Anything beyond cores and memory is a template looked up by node type. |
-| KV cluster | **undecided** | The controller has no view of KubeVirt clusters at all. See open question 1. |
+| `mce_cluster` | ✅ | The MCE, by cluster name. It selects the worker queue and the inventory VLAN |
+| `infra_env` | ✅ | The pool |
+| `count` | | A draw from the pool: N runs in parallel, one server each, in free slots. Without `count` or names, one run |
+| `server_names` | | Named servers, 1 to 20, one run each. Sent alone, without `count` |
+| `namespace` | | Defaults to `inventory` |
+
+A request starts at most 20 runs, across 100 slots per pool.
+
+### Read from the InfraEnv
+
+| What | From |
+|---|---|
+| Which servers | Its agentLabels: `redbull.io/flavor`, `redbull.io/size`, `redbull.io/site`, `topology.kubernetes.io/zone` |
+| Bare metal or VM | `redbull.io/size`: `mtl` for bare metal, `kv<cpu>` for a VM of that size |
+| The VLAN | The MCE's inventory segment, from the Segments Manager |
 
 ---
 
 ## 3 :: Preconditions
 
-- The InfraEnv exists on the hub. A missing one fails the run rather than creating it: a pool
-  is operator-declared.
-- The hub has an inventory VLAN allocated, resolved by hub name.
-- A worker polls the hub's queue. For a VM pool, one also polls the KV cluster's queue.
-- The inventory token is an **admin** token, because the run takes a lock.
+- The InfraEnv exists on the MCE with its four labels (naming convention §4).
+- The MCE has its inventory segment allocated.
+- A worker polls the MCE's server-lifecycle queue.
+- For a VM pool, the zone has a KV cluster with room, or a standby
+  ([kv-capacity-controller.md](../kv-capacity-controller.md)).
 
 ---
 
 ## 4 :: Process flow
 
-### 4.0 First, what crosses the wire
+### 4.1 Who orders, and how many
 
-The natural misreading is that the target is sent to the hub and the hub acts on it. It is
-not, and there is nothing at the hub that could.
+The Inventory Controller works out each pool's need, `pending + spares − (free + inFlight)`, and
+orders that many runs with `count` (inventory-controller.md, R1). Each run takes one free slot, so
+the runs in flight are visible in Temporal by their ids. Every run labels what it creates
+`redbull.io/installed-by: <workflow id>`; once its Agent exists, the controller counts the machine
+once, as a free Agent.
 
-Target of 12, pool holding 10, nothing running:
-
-| # | Hop | What is on the wire |
-|---|---|---|
-| 1 | controller → hub API | one `LIST` of Agents in this pool |
-| 2 | controller → Temporal | one query: how many `install-server-<infraenv>_*` runs are open |
-| 3 | controller, no I/O | `needed = 12 − (9 + 1 + 0) = 2` |
-| 4 | controller → bulk route | `{ infra_env, mce_cluster, count: 2 }` |
-| 5 | route → Temporal | start `_1` and `_2`. A slot already running raises, is counted busy, and is stepped over. |
-| 6 | each run → hub queue | its own activities, one machine each |
-
-A queue is an address, not a component. The worker polling it runs one named function with
-typed arguments and returns a typed result. It knows nothing about the target or the pool.
-
-### 4.1 How a target becomes runs
-
-The controller holds the policy and does the conversion at the last moment:
-
-```
-target  = demand + buffer                        (policy, from its ConfigMap)
-running = open runs matching install-server-<infraenv>_*
-needed  = target - (assigned + spare + running)
-
-if needed <= 0:  do nothing, stay silent
-else:            POST install-server/bulk { infra_env, mce_cluster, count: needed }
-```
-
-> **`count` is additive, not a target.** The route starts that many **new** runs. Sending
-> the same count again while the first batch is still installing **adds** to it. That is
-> deliberate, because an operator calling it by hand wants exactly that. A controller must
-> therefore subtract the running slots before calling, which is what the third line does.
-
-The staleness window is one HTTP call rather than minutes, because the controller reads live
-state immediately before converting. A slot finishing inside that window over-provisions by
-at most one, which the deadband absorbs.
-
-### 4.2 Why slots rather than a parent workflow
-
-Run ids are `install-server-<infraenv>_<slot>`. The route walks slots upward, treats an
-already-started error as "busy", and starts runs in free slots until it has started `count`.
-A finished slot is free again, because Temporal reuses the id of a closed run.
-
-| | Consequence |
-|---|---|
-| **In-flight is discoverable, not private** | Anyone can ask Temporal how many slots are open. A parent would have held that count in memory, where only it could see it and where a crash loses it. |
-| **No parent to fail** | Each run is independently pollable, independently retryable, and failure of one says nothing about the others. |
-| **Nothing owns convergence, and that is fine** | A failed slot simply leaves the gap open, and the controller's next pass sees it. The two-minute cycle is the retry. |
-| **Two requests cannot start one slot twice** | Temporal allows one running workflow per id; the loser moves on. |
-
-### 4.3 Candidate contention, which is easy to miss
-
-Every run on a pool draws from the **same top** of the available list. Run two will be handed
-the machine run one just locked, skip it, and try the next. So each run needs enough spare
-candidates to step over everything its siblings have taken:
-
-```
-candidate_count = min(20, busy + count + 2)
-```
-
-Without that headroom most of a parallel batch fails on the lock. A run that finds every
-candidate locked fails with a reserved error, which means either the pool had fewer free
-machines than are installing, or the count needs raising.
-
-### 4.4 Steps, for one run
+### 4.2 Steps for one run
 
 | # | Phase | Runs on | Action | On failure |
 |---|---|---|---|---|
-| 1 | `resolving-vlan` | segments queue | Read the hub's `INVENTORY` segment by hub name | Fail. No candidate can fix a missing VLAN. |
-| 2 | `acquiring-server` | hub queue | Draw candidates from the inventory, pattern from the hardware class, healthy only | See step 3 |
-| 3 | `creating-vm` | **KV queue** | **VM pools only, and only if the draw came back empty.** Create the machine and wait for it to run and report a MAC. | BM pool → fail, pool exhausted. VM pool → retry, then fail. |
-| 4 | `selecting-server` | hub queue | Pick bond members: two link-up NICs on distinct physical ports, from `interfaces` and never from the MAC list. Check name, BMC driver and address, MAC syntax, and that no BareMetalHost already exists here. | Every reason is a **skip** to the next candidate |
-| 5 | `reserving-server` | hub queue | Lock the machine. Holder is this run id, so a retry extends rather than races. | A lock another run holds is a skip |
-| 6 | `registering-pxe` | hub queue | **IPMI only.** Map the **boot MAC only** to the InfraEnv's boot entry on the site's PXE host | No PXE entry for the site is a skip |
-| 7 | `creating-nmstate` | hub queue | Write the NMStateConfig: bond with addressing off, VLAN sub-interface on DHCP. **First for IPMI**, before anything can power the host on. | A differing resource is a conflict for a human |
-| 8 | `creating-secret` | hub queue | Write the BMC credential Secret | As above |
-| 9 | `creating-bmh` | hub queue | Write the BareMetalHost. For a VM this points at its Redfish endpoint. | As above |
-| 10 | `awaiting-image` | hub queue | Wait for the InfraEnv image to regenerate **including this host's config**. Two conditions, not one. | Timeout → tear down, next candidate |
-| 11 | `publishing-boot` | hub queue | **IPMI only.** Publish the InfraEnv's iPXE entry, now that the image includes this host. Compare-and-set; a newer entry already there is success. | Timeout → tear down |
-| 12 | `awaiting-agent` | hub queue | Wait for an Agent, matched by the bond MAC | Timeout → tear down, next candidate |
-| 13 | `holding-server` | hub queue | Extend the lock to 24h | Non-fatal, log |
+| 1 | `resolving-vlan` | Segment-lifecycle queue | Read the MCE's inventory segment by cluster name | Run fails before any server is drawn |
+| 2 | `validating-infraenv` | MCE queue | Check that the InfraEnv exists and that its labels name its servers | Run fails before any server is drawn |
+| 3 | `creating-vm` | `create-vm` child | **VM pools only (AD29).** Build the VM, as in §4.3 | Run fails |
+| 4 | `acquiring-server` | MCE queue | server-scan allocates one server matching the flavor, size, site and zone, locks it for this run and live-checks it while locked. A VM pool takes the VM its child built, by name | Run fails; the controller's next pass orders again |
+| 5 | `selecting-server` | MCE queue | Check the server: a usable name, a known BMC, no BareMetalHost yet. Its two bond NICs come from server-scan | Lock returned, run fails with the reason |
+| 6 | `checking-nmstateconfig` | MCE queue | Replace an NMStateConfig under the server's name that differs from this install | |
+| 7 | `registering-pxe-boot` | MCE queue | **IPMI only.** Map both bond MACs to the InfraEnv's boot entry, `<mce>/<infraenv>.ipxe`, on the site's PXE VM, before the BareMetalHost exists | Run fails |
+| 8 | `creating-nmstateconfig`, `publishing-pxe-boot` | MCE queue | **IPMI only.** Write the NMStateConfig first, wait up to 10 minutes for a discovery image that includes it, then publish its iPXE script as the boot entry | Rolled back, run fails |
+| 9 | `creating-secret`, `creating-baremetalhost`, `creating-nmstateconfig` | MCE queue | Write the BMC Secret, the BareMetalHost named after the server, and the NMStateConfig, each labelled `redbull.io/installed-by`. A VM's BareMetalHost points at its Redfish endpoint on kubevirt-redfish | |
+| 10 | `awaiting-agent` | MCE queue | Wait up to an hour for the Agent. It registers with the InfraEnv's labels | Rolled back (§5) |
+| 11 | `holding-server`, `awaiting-server-scan`, `releasing-lock` | MCE queue | Extend the lock to a day, read server-scan every 5 minutes, and release the lock once server-scan shows the server installed. A lock still held after the day expires, and the run completes | |
 
-Steps 4 to 12 are a **loop over candidates, not a pipeline**. A machine cannot be shown to
-be installable without creating its resources and watching what happens.
+### 4.3 A VM pool (AD29)
+
+For an InfraEnv of size `kv<cpu>`, the run starts `create-vm-<mce>_<infraEnv>_<slot>` as a child
+before it draws:
+
+1. `create-vm` takes the zone's lock (AD32) and places the VM on the first KV cluster that fits, in
+   creation order (AD33).
+2. It creates the VM Halted, with `<cpu>` vCPUs, a fixed MAC and the name
+   `ocp-<flavor>-kv<cpu>-<site>-<mac>`. kubevirt-redfish exposes it, and server-scan lists it.
+3. The parent installs exactly that VM, from step 4 on.
 
 ---
 
 ## 5 :: Failure handling
 
-### Per-candidate rollback
+### Rollback when no Agent appears
 
-Reached from a timeout at step 10, 11 or 12, or from a lapsed lock. Order is load-bearing:
+1. Remove the NMStateConfig and the BareMetalHost.
+2. IPMI: delete the server's MACs from the site's PXE VM, while the lock is still the run's.
+3. Put the server in `MAINTENANCE` in server-scan, so it stays out of every draw until a person
+   clears it.
+4. Release the lock, and fail with `AgentNeverAppearedError`, naming where the host's own state
+   points.
 
-```
-1. annotate the BareMetalHost detached      <- before anything is deleted
-2. delete the NMStateConfig
-3. delete the BareMetalHost
-4. bounded wait, then clear ONLY the metal3 finalizer
-5. delete the Secret
-6. verify all three are gone                <- else raise, retryable
-7. unmap the PXE entry (IPMI only)
-8. VM pool: delete the machine.  BM pool: release the lock
-```
+### Cancellation
 
-Detaching before deleting is not optional. Metal3's finalizer will otherwise block forever
-trying to deprovision through a BMC that is not answering, measured at fourteen hours with
-no error reported.
+A cancelled run that has written to the MCE removes the server through a
+`remove-server-from-mce-<server>` child.
 
 ### Classification
 
 | Condition | Treatment |
 |---|---|
-| Candidate unusable for any reason | **Skip**, try the next |
-| Lock held elsewhere | **Skip** |
-| Resource exists but differs | **Terminal** — a human must look |
-| InfraEnv or namespace missing, RBAC refused | **Terminal** |
-| Every candidate locked | **Terminal** — pool too small, or raise `candidate_count` |
-| Anything else | Retry with capped backoff |
-
-There is no pool-level attempt counter, because there is no pool-level run. A run that
-exhausts its candidates fails, and the controller's next pass decides whether to try again.
+| VLAN or InfraEnv missing, InfraEnv labels incomplete | Run fails before any server is drawn |
+| No server available | Run fails. The controller's next pass orders again; after repeated hardware failures it probes every 20 minutes |
+| Server unusable at selection | Lock returned, run fails with the reason. A new run draws another server |
+| No Agent within the hour | Rolled back, server to `MAINTENANCE`, run fails |
+| Anything else | Retried with capped backoff |
 
 ---
 
 ## 6 :: Idempotency
 
-- One running workflow per slot id, so two requests cannot start the same slot twice.
-- All three creates are create-if-absent **with identity verification**. An existing resource
-  is success once its BMC address, boot MAC, InfraEnv and VLAN match, and is never
-  overwritten, so an operator's hand correction survives a re-run. This is not server-side
-  apply, and the difference is the point.
-- Taking a lock the run already holds extends it instead of failing.
-- Publishing a boot entry older than the one already there is success, not a rollback.
+- One running workflow per id: each slot, and each named server, runs once at a time.
+- Every create is create-if-absent; an existing resource is success.
+- server-scan's lock is held in the run's id, so a retry continues with the same server.
+- Publishing a boot entry older than the one already there is success.
 
 ---
 
@@ -212,23 +143,26 @@ exhausts its candidates fails, and the controller's next pass decides whether to
 
 | Field | Notes |
 |---|---|
-| per-slot report | `started`, `already_running` or `failed`, with the run id |
-| per-run result | the Agent produced, or the grouped reasons every candidate was skipped |
+| Per-slot report | `started`, `already_running` or `failed`, with the workflow id |
+| Per-run result | The Agent produced, or the reason the run failed |
 
 ---
 
-## 8 :: Open questions
+## 8 :: Built today vs. the architecture
 
-1. **Which KubeVirt cluster a new machine is built on.** The controller cannot answer: it
-   sees NodePools, InfraEnvs and Agents on its own hub and nothing else. This is the same
-   gap as deciding when a cell is full, surfacing in a second place. Once the inventory
-   scans the KubeVirt clusters it will know which exist and how loaded each is, which makes
-   it the least-bad home for the decision, but that is a proposal.
-2. **Protecting a freshly created machine.** A new VM is invisible to the inventory until
-   the collector sees it, so nothing else can draw it and nothing can lock it either. Once
-   it becomes visible it reads as available until something reports it claimed. Whether that
-   window needs a lock, or whether the Agent binding closes it in time, is untested.
-3. **Collection latency.** Whether the KubeVirt collector runs on a cadence of minutes, or
-   the run proceeds with the machine it just created and lets the collector catch up. The
-   second matches the precedent already set for Dell provisioning.
-4. Where the pool-type label is stamped, and by what.
+`team-redbull/workflows`, `main`, as of 2026-11-25:
+
+| # | Architecture | Built today |
+|---|---|---|
+| 1 | A VM pool's run builds its VM through a `create-vm` child, then installs that VM (AD29) | `create-vm` runs as its own workflow, and `add-server-to-mce` draws a VM pool from server-scan like any other pool |
+| 2 | The draw matches the zone, which server-scan holds from the ACI leaf (naming convention §3) | The draw matches flavor, size and site (`_POOL_LABELS`) |
+| 3 | Every run labels its objects `redbull.io/installed-by: <workflow id>` (inventory-controller.md) | Still to be built |
+| 4 | `create-vm` places a VM on the first KV cluster that fits, under the zone's lock (AD32, AD33) | `create-vm` ranks the zone's clusters by best-fit bin packing (`placement.py`). The lock and first fit are in the design on branch `docs/create-vm-placement` |
+| 5 | VM names `ocp-<flavor>-kv<cpu>-<site>-<mac>` (naming convention §1) | `create-vm` names VMs `ocp-<infraenv>-<6 hex>` and reads the earlier InfraEnv names (`<conf>[-<opt>]-zone-<zone>-<cpu>`), so a draw by flavor, size and site misses its VMs |
+
+---
+
+## 9 :: Open questions
+
+1. **How fast server-scan lists a new VM.** The parent takes the VM its child built right away;
+   server-scan has to list it by then, or the child hands the VM over directly.

@@ -18,6 +18,11 @@ HERE = Path(__file__).parent
 def N(x, y, t, s, w=170, h=54):
     return {"x": x, "y": y, "w": w, "h": h, "t": t, "s": s}
 
+
+def NK(x, y, t, s, k, w=200, h=50):
+    """A node with a kind, coloured by the v2 look: actor, orch, svc, hub or machine."""
+    return {"x": x, "y": y, "w": w, "h": h, "t": t, "s": s, "k": k}
+
 CUST = N(30,  36, "Customer",           "catalog or ticket")
 CTL  = N(30,  36, "Inventory Controller", "on this hub")
 TMP  = N(400, 36, "Temporal",           "", 200)
@@ -32,13 +37,75 @@ HUB  = N(380, 430, "MCE Hub",           "HostedCluster + NodePools", 240)
 SEED = N(800, 430, "Seed Cluster",      "hosts KV control planes")
 
 
-def page(title, subtitle, nodes, group, steps, mode_labels=("Pool", "Bare metal", "Virtual"), tags=None):
+def page(title, subtitle, nodes, group, steps, mode_labels=("Pool", "Bare metal", "Virtual"), tags=None,
+         look=None):
     html = _page(title, subtitle, nodes, group, steps, mode_labels)
+    if look == "v2":
+        html = _look_v2(html)
     if tags:
         badge = """'<span class="tag '+s.b+'">'+s.b+'</span>'"""
         assert badge in html
         html = html.replace(badge, """'<span class="tag '+s.b+'">'+(TAGS[s.b]||s.b)+'</span>'""") \
                    .replace("const HAS_MODES =", "const TAGS = " + json.dumps(tags) + ";\nconst HAS_MODES =", 1)
+    return html
+
+
+V2_CSS = """
+  #svg{height:470px}
+  .node text{font-size:14px}
+  .node .kbar,.node.hot .kbar,.node.done .kbar{stroke:none}
+  .node.k-actor .kbar{fill:#3ecf8e} .node.k-orch .kbar{fill:#4da3ff}
+  .node.k-svc .kbar{fill:#58c7d8}   .node.k-hub .kbar{fill:#b57bff}
+  .node.k-machine .kbar{fill:#e8b339}
+  .edge.trail{stroke:#4da3ff;stroke-opacity:.25;stroke-width:1.5;stroke-dasharray:5 4}
+  .edge.hot{marker-end:url(#ah)}
+  .legend{display:flex;flex-wrap:wrap;gap:16px;margin-top:9px;font-size:11.5px;color:var(--dim)}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;
+            vertical-align:-1px}
+"""
+
+V2_LEGEND = """  <div class="legend">
+    <span><i style="background:#3ecf8e"></i>requester</span>
+    <span><i style="background:#4da3ff"></i>orchestration</span>
+    <span><i style="background:#58c7d8"></i>service</span>
+    <span><i style="background:#b57bff"></i>MCE object</span>
+    <span><i style="background:#e8b339"></i>machine</span>
+    <span><i style="border:1px dashed #4da3ff"></i>path so far</span>
+  </div>
+</header>"""
+
+
+def _look_v2(html):
+    """Arrowheads on the active arrow, a faint trail of the path so far, and a colour accent
+    per kind of node (NK), with a legend. Applied only to pages that ask for it, so every
+    other page renders exactly as before."""
+    def rep(h, a, b):
+        assert h.count(a) == 1, f"v2 look: expected once: {a[:60]!r}"
+        return h.replace(a, b, 1)
+    html = rep(html, "</style>", V2_CSS + "</style>")
+    html = rep(html, "</header>", V2_LEGEND)
+    html = rep(html, 'svg.innerHTML="";',
+               'svg.innerHTML=\'<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" '
+               'markerWidth="7" markerHeight="7" orient="auto-start-reverse">'
+               '<path d="M0,0 L10,5 L0,10 z" fill="#4da3ff"/></marker></defs>\';')
+    html = rep(html, 'n.appendChild(el("rect",{x:d.x,y:d.y,width:d.w,height:d.h}));',
+               'n.appendChild(el("rect",{x:d.x,y:d.y,width:d.w,height:d.h}));\n'
+               '    if(d.k){ n.classList.add("k-"+d.k);\n'
+               '      n.appendChild(el("rect",{x:d.x+1,y:d.y+9,width:4,height:d.h-18,rx:2,class:"kbar"})); }')
+    html = rep(html, "function path(a,b){",
+               "function clip(n,tx,ty){ // where the line toward (tx,ty) leaves node n's box\n"
+               "  const d=NODES[n], x=cx(n), y=cy(n), dx=tx-x, dy=ty-y;\n"
+               "  const k=Math.min((d.w/2+4)/Math.max(Math.abs(dx),1e-6),\n"
+               "                   (d.h/2+4)/Math.max(Math.abs(dy),1e-6));\n"
+               "  return [x+dx*k, y+dy*k];\n"
+               "}\n"
+               "function path(a,b){")
+    html = rep(html, "const x1=cx(a), y1=cy(a), x2=cx(b), y2=cy(b);",
+               "const [x1,y1]=clip(a,cx(b),cy(b)), [x2,y2]=clip(b,cx(a),cy(a));")
+    html = rep(html, 'document.getElementById("n_"+STEPS[si].t)?.classList.add("done"); });',
+               'document.getElementById("n_"+STEPS[si].t)?.classList.add("done"); });\n'
+               '  act.forEach((si,pos)=>{ if(here>=0 && pos<here){ const t=STEPS[si];\n'
+               '    edges.appendChild(el("path",{class:"edge trail",d:path(t.f,t.t)})); } });')
     return html
 
 
@@ -69,194 +136,169 @@ WORKFLOWS = {}
 
 WORKFLOWS["01-add-server-to-mce"] = dict(
     title="01 :: Add Server to MCE",
-    subtitle="One run adds one machine. Filling a pool is N parallel runs in numbered slots. "
-             "Both pool types draw the same way; only the empty-draw response differs.",
-    nodes={"seg":  N(20, 16, "Segments Manager", "VLAN pool", 165, 46),
-           "segw": N(20, 92, "segment worker", "holds the SM token", 165, 46),
-           "tmp":  N(400, 16, "Temporal", "bulk route · slot runs", 210, 46),
-           "scan": N(815, 16, "server-scan", "fleet inventory", 165, 46),
-           "kvw":  N(812, 120, "KV worker", "PLANNED, same pattern", 156, 42),
-           "vm":   N(812, 176, "VirtualMachine", "only if draw is empty", 156, 42),
-           "pxe":  N(20, 252, "PXE Host", "per site", 165, 46),
-           "hubw": N(265, 292, "server-lifecycle worker", "the hub's own SA", 215, 48),
-           "ctl":  N(505, 292, "Inventory Controller", "in-cluster", 240, 48),
-           "ienv": N(265, 372, "InfraEnv", "the pool", 215, 46),
-           "res":  N(505, 372, "BMH + NMState", "+ BMC Secret", 240, 46),
-           "agt":  N(350, 452, "Agent", "registered, unbound", 300, 46)},
-    group=[{"x": 795, "y": 86, "w": 190, "h": 150, "label": "KV CLUSTER"},
-           {"x": 240, "y": 250, "w": 530, "h": 290,
-            "label": "MCE HUB"}],
+    subtitle="One run puts one machine into one pool; N machines are N runs in numbered slots. "
+             "Bare metal and VMs take the same run: a VM pool first builds its VM through the "
+             "create-vm child (AD29). Where main differs today, the step says so (procedure 01, §8).",
+    look="v2",
+    nodes={"cvm":  NK(20, 36, "create-vm", "child · zone lock, first fit", "orch"),
+           "vm":   NK(20, 140, "VirtualMachine", "Halted · fixed MAC", "machine"),
+           "ctl":  NK(20, 262, "Inventory Controller", "herzi · or an operator", "actor"),
+           "tmp":  NK(385, 20, "Temporal", "add-server-to-mce · a run per slot", "orch", 230),
+           "seg":  NK(780, 20, "Segments Manager", "the MCE's VLAN", "svc"),
+           "scan": NK(780, 120, "server-scan", "allocates · locks", "svc"),
+           "pxe":  NK(780, 220, "PXE VM", "per site · IPMI only", "svc"),
+           "hubw": NK(400, 180, "server-lifecycle worker", "activities on the MCE", "hub"),
+           "ienv": NK(270, 290, "InfraEnv", "the pool · 4 labels", "hub"),
+           "res":  NK(535, 290, "BMH · NMState · Secret", "labelled installed-by", "hub"),
+           "agt":  NK(400, 470, "Agent", "free · the pool's labels", "hub"),
+           "srv":  NK(780, 380, "The machine", "bare metal, or the VM", "machine")},
+    group=[{"x": 8, "y": 6, "w": 224, "h": 196, "label": "KV CLUSTER · VM POOLS"},
+           {"x": 250, "y": 150, "w": 505, "h": 395, "label": "MCE HUB"}],
     steps=[
-      ("ctl","agt","both","Count the pool","The controller looks. Nothing tells it.",
-       {"call":"LIST agent-install.openshift.io/v1beta1 Agent\n"
-               "  namespace: <infraenv namespace>\n"
-               "  label:     infraenvs.agent-install.openshift.io=<infra_env>",
-        "recv":"assigned = those with spec.clusterDeploymentName set   -> 9\n"
-               "spare    = those with it empty                         -> 1",
-        "warn":"In-cluster read, its own ServiceAccount. NOT from the inventory: that\n"
-               "learns a machine is claimed from a job running every 15 minutes, far too\n"
-               "stale for this. The Agent resource is the only current source."}),
+      ("ctl","ctl","both","Work out the need","Spares plus waiting workers, per pool (AD26).",
+       {"call":"no call — the controller's own arithmetic, every 60 seconds",
+        "send":"pending  = AgentMachines waiting for an Agent (NoSuitableAgents)  -> 2\n"
+               "spares   = this pool's number, from the controller's ConfigMap    -> 2\n"
+               "free     = fresh, free Agents in the pool                         -> 1\n"
+               "inFlight = add-server-to-mce runs open on the pool's slots        -> 1\n"
+               "need     = pending + spares - (free + inFlight) = 2 + 2 - 2 = 2",
+        "warn":"Each NodePool's supply follows its own waiting workers, so a NodePool slow\n"
+               "to release machines leaves the others supplied.\n"
+               "need <= 0: the pass ends there."}),
 
-      ("ctl","tmp","both","Ask how many runs are open","In-flight is discoverable, not private.",
-       {"call":"Temporal: list open workflows matching install-server-<infra_env>_*",
-        "recv":"running = 0",
-        "warn":"This is why there is no parent workflow. Naming the runs by slot turns\n"
-               "\"how many are building\" into a question anyone can ask. A parent would\n"
-               "have held that count in memory, where only it could see it and where a\n"
-               "crash loses it."}),
-
-      ("ctl","ctl","both","Compute what is needed","Policy meets observation. No I/O.",
-       {"call":"no call — the controller's own arithmetic",
-        "send":"target  = demand + buffer      = 10 + 2 = 12     (from its ConfigMap)\n"
-               "needed  = target - (assigned + spare + running)\n"
-               "        = 12     - (9        + 1     + 0)       = 2",
-        "warn":"The target never touches the agent count: it is demand plus configuration.\n"
-               "That is what makes a stale reading harmless. The agent count is used only\n"
-               "here, to turn the target into a count, immediately before the call.\n\n"
-               "needed <= 0 -> stay silent. No traffic on a steady fleet."}),
-
-      ("ctl","tmp","both","Start N runs","POST install-server/bulk with count = 2.",
-       {"call":"POST /workflows/server-lifecycle/install-server/bulk",
-        "send":"{ \"infra_env\": \"cisco-m6-64c-512gb\",\n"
-               "  \"mce_cluster\": \"ocp4-prod-mce-bat-yam\",\n"
-               "  \"count\": 2 }",
+      ("ctl","tmp","both","Order N runs","One request, N parallel runs.",
+       {"call":"POST /workflows/server-lifecycle/add-server-to-mce",
+        "send":"{ \"mce_cluster\": \"ocp4-prod-mce-five-a\",\n"
+               "  \"infra_env\":   \"c200-mtl-az1\",\n"
+               "  \"count\":       2 }",
         "recv":"202, a per-slot report: started / already_running / failed",
-        "warn":"COUNT IS ADDITIVE, not a target. It starts that many NEW runs, and sending\n"
-               "the same count again while the batch is installing ADDS to it. That is\n"
-               "deliberate for an operator calling by hand. A controller must therefore\n"
-               "subtract the running slots first, which is what the previous step did."}),
+        "warn":"count starts that many NEW runs, one server each: at most 20 per request,\n"
+               "across 100 slots per pool. An operator names servers instead:\n"
+               "\"server_names\": [\"ocp-c200-mtl-five-fch2145v1ab\"]   (1 to 20)"}),
 
-      ("tmp","tmp","both","Walk the slots","_1 upward, stepping over whatever is busy.",
-       {"call":"start workflow  install-server-<infra_env>_1,  then _2, ...",
-        "recv":"an already-started error means that slot is busy: count it, move on",
-        "warn":"A finished slot is free again, because Temporal reuses the id of a closed\n"
-               "run. Two requests at once cannot start one slot twice: one running\n"
-               "workflow per id, and the loser moves on.\n\n"
-               "candidate_count defaults to min(20, busy + count + 2). Every run draws\n"
-               "from the SAME top of the available list, so each needs enough spares to\n"
-               "step over what its siblings have locked. Without that headroom most of a\n"
-               "parallel batch fails on the lock."}),
+      ("tmp","tmp","both","Take free slots","add-server-to-mce-&lt;mce&gt;_&lt;infraEnv&gt;_&lt;slot&gt;",
+       {"call":"start add-server-to-mce-ocp4-prod-mce-five-a_c200-mtl-az1_1, then _2, ...",
+        "recv":"a slot already running counts as busy, and the next free one is taken",
+        "warn":"In-flight is visible to anyone: the controller counts open runs by their\n"
+               "ids. One running workflow per id, so each slot runs once at a time, and a\n"
+               "finished slot is free again."}),
 
-      ("tmp","hubw","both","Each run dispatches to the hub","From here on, one run, one machine.",
-       {"call":"ExecuteActivity  ->  queue server-lifecycle-activity-ocp4-prod-mce-bat-yam",
+      ("tmp","seg","both","Resolve the VLAN","resolving-vlan · segment-lifecycle queue",
+       {"call":"Segments Manager: the MCE's INVENTORY segment, by cluster name",
+        "recv":"vlan_id",
+        "warn":"The VLAN belongs to the MCE, so it is read once, before any server is\n"
+               "drawn, on the segment-lifecycle queue where that credential lives."}),
+
+      ("tmp","hubw","both","Hand the run to the MCE","Every later call is an activity here.",
+       {"call":"ExecuteActivity -> queue server-lifecycle-activity-ocp4-prod-mce-five-a",
         "send":"the activity name and typed arguments",
-        "recv":"a typed result, recorded in that run's event history",
-        "warn":"A workflow is REPLAYED from its history after a crash, so it must be\n"
-               "deterministic: the sandbox blocks network, clock and randomness, and it\n"
-               "holds no credentials. Every outside call is an ACTIVITY, run by a worker\n"
-               "inside the cluster it talks to. On replay the activity is not re-run; the\n"
-               "recorded result is read back.\n\n"
-               "Every arrow after this starts at a WORKER, never at Temporal."}),
+        "recv":"a typed result, recorded in the run's history",
+        "warn":"The workflow replays from its history after a crash and holds no\n"
+               "credentials. Every outside call is an activity, run by a worker inside\n"
+               "the cluster it talks to."}),
 
-      ("segw","seg","both","Resolve inventory VLAN","On the segments queue, where that token lives.",
-       {"call":"GET /api/segments?type=INVENTORY",
-        "recv":"match client-side on cluster_name == hub; take vlan_id",
-        "warn":"No cluster filter exists, so the hub match is made client-side and is not\n"
-               "optional. Re-check the type too. Once per run, before any candidate."}),
+      ("hubw","ienv","both","Check the InfraEnv","validating-infraenv · it names its servers",
+       {"call":"GET agent-install.openshift.io/v1beta1 InfraEnv c200-mtl-az1   (namespace inventory)",
+        "recv":"spec.agentLabels:\n"
+               "  redbull.io/flavor: c200     redbull.io/size: mtl\n"
+               "  redbull.io/site: five       topology.kubernetes.io/zone: az1",
+        "warn":"A missing InfraEnv, or one missing a label, fails the run before any\n"
+               "server is drawn. size tells the pools apart: mtl is bare metal, kv<cpu>\n"
+               "a VM of that size."}),
 
-      ("hubw","scan","both","Draw candidates","Both pool types. Virtual machines are in the inventory too.",
-       {"call":"GET /servers/available"
-               "?pattern=^ocp-<infra_env>&count=<candidate_count>&health=HEALTHY",
-        "recv":"items[]: id, name, bmc_vendor, bmc{...}, interfaces[...], nic_macs[],\n"
-               "         site_id, health_overall, live_recheck_performed",
-        "warn":"Bond from interfaces[], NEVER nic_macs[]: partitioned cards collapse to one\n"
-               "entry per port in the first and are left whole in the second.\n\n"
-               "Not a pure read. It live-rechecks each candidate against the vendor manager\n"
-               "and writes the result back. A 503 means that recheck failed, not that\n"
-               "nothing is free."}),
+      ("tmp","cvm","VM","Build the VM","create-vm child (AD29)",
+       {"call":"child workflow create-vm-ocp4-prod-mce-five-a_c200-kv32-az1_1",
+        "send":"InfraEnv c200-kv32-az1: 32 vCPUs, zone az1",
+        "warn":"The zone's lock (AD32), then the first KV cluster that fits, in creation\n"
+               "order (AD33).\n\n"
+               "Built today: create-vm runs as its own workflow and ranks the zone's\n"
+               "clusters by best fit. The child, the lock and first fit are still to be\n"
+               "built (procedure 01, §8)."}),
 
-      ("kvw","vm","VM","Create a machine","Virtual pools only, and only when the draw came back empty.",
-       {"call":"CREATE kubevirt.io/v1 VirtualMachine   (on the KV cluster's queue)",
-        "send":"cores and memory from the node type; labels for zone, node type, pool",
-        "recv":"wait for running, then read the interface MAC",
-        "warn":"PLANNED. This is the ONE divergence between the two pool types: a virtual\n"
-               "pool can manufacture a machine, a bare-metal pool fails as pool-exhausted.\n\n"
-               "Open: which KV cluster. The controller sees only its own hub, so it cannot\n"
-               "name one. Same gap as deciding when a cell is full.\n\n"
-               "Open: a new machine is invisible to the inventory until the collector sees\n"
-               "it, so nothing can draw it and nothing can lock it either."}),
+      ("cvm","vm","VM","VM created, Halted","Fixed MAC · kubevirt-redfish exposes it",
+       {"call":"CREATE kubevirt.io/v1 VirtualMachine   on the chosen KV cluster",
+        "send":"name: ocp-c200-kv32-five-02a1b2c3d4e5\n"
+               "runStrategy: Halted · a fixed MAC · label redfish-enabled: \"true\"",
+        "recv":"the root disk bound; kubevirt-redfish exposes it as a Redfish system",
+        "warn":"Built today: VMs are named ocp-<infraenv>-<6 hex>, which a draw by\n"
+               "flavor, size and site misses (procedure 01, §8)."}),
 
-      ("hubw","scan","both","Reserve the machine","2h lease, holder is this run id.",
-       {"call":"POST /servers/{id}/reservation          (needs an ADMIN token)",
-        "send":"{ \"holder\": \"install-server\", \"mce_cluster\": ..., \"infra_env\": ...,\n"
-               "  \"workflow_id\": \"install-server-<infra_env>_2\", \"ttl_seconds\": 7200 }",
-        "recv":"200 -> expires_at.  ttl bounded 300..86400",
-        "warn":"A 409 is TWO answers. With details.held_by a sibling run owns it: skip this\n"
-               "candidate. Without it you lost a revision race, often to a collector:\n"
-               "retryable. This lock is what stops two slots taking one machine."}),
+      ("hubw","scan","both","Allocate one server","acquiring-server · locked for this run",
+       {"call":"POST /servers/available",
+        "send":"flavor c200, size mtl, site five, zone az1   -> ocp-c200-mtl-five-…\n"
+               "a VM pool: the VM its child built, by name",
+        "recv":"one server, locked for this run's id and live-checked while locked",
+        "warn":"One server per run (server-scan ADR-0063): server-scan picks, locks and\n"
+               "checks it, so the server comes back already this run's.\n\n"
+               "Built today: the draw sends flavor, size and site; the zone is still to\n"
+               "be added (procedure 01, §8)."}),
 
-      ("hubw","pxe","IPMI","Map the boot MAC","Blades have no virtual media, so they must PXE.",
-       {"call":"PUT /pxe-map/<boot-mac>",
-        "send":"{ \"infra_env\": { \"mce_cluster\": ..., \"name\": ... } }",
-        "warn":"The BOOT MAC only, which is bond member one and the MAC the BareMetalHost\n"
-               "boots from. Mapping both bond MACs breaks a blade whose firmware PXE-boots\n"
-               "from the other NIC."}),
+      ("hubw","hubw","both","Check the server","selecting-server",
+       {"call":"no call — checks on what server-scan returned",
+        "recv":"a usable name, a known BMC, no BareMetalHost yet;\n"
+               "the two bond NICs, as server-scan vouched for them",
+        "warn":"A server that fails a check goes back to server-scan with its lock, and\n"
+               "the run fails saying why. The controller's next pass orders again."}),
 
-      ("hubw","res","both","Write NMStateConfig","First for IPMI, before anything can power the host on.",
+      ("hubw","pxe","IPMI","Map the bond MACs","registering-pxe-boot · before the BMH",
+       {"call":"the site's PXE VM: map both bond MACs",
+        "send":"-> the InfraEnv's boot entry  ocp4-prod-mce-five-a/c200-mtl-az1.ipxe",
+        "warn":"IPMI servers (UCS blades) PXE-boot, having no virtual media. The MACs are\n"
+               "mapped first, because Ironic may power the host on as soon as it\n"
+               "registers it."}),
+
+      ("hubw","res","IPMI","NMStateConfig first","Then wait for a new discovery image.",
        {"call":"CREATE agent-install.openshift.io/v1beta1 NMStateConfig",
-        "send":"bond0        type: bond   ipv4 {enabled: false}\n"
-               "bond0.<vlan> type: vlan   ipv4 {enabled: true, dhcp: true,\n"
-               "                                auto-dns/gateway/routes: true}\n"
-               "labels: {infraenvs.agent-install.openshift.io: <infra_env>}",
-        "warn":"The VLAN sub-interface is the ONLY interface with an address, and it is\n"
-               "leased. The segment contributes the tag; the DHCP scope decides the address."}),
+        "send":"bond0 without an address · bond0.<vlan> on DHCP",
+        "recv":"the InfraEnv's discovery image regenerated after it   (up to 10 minutes)",
+        "warn":"So the host boots an image that already carries its own network config,\n"
+               "however many installs of the InfraEnv run at once."}),
 
-      ("hubw","res","both","Write BMC Secret","Credentials never come from the inventory.",
-       {"call":"CREATE core/v1 Secret",
-        "send":"stringData: { username: ..., password: ... }",
-        "warn":"The inventory returns BMC endpoints but never credentials; it does not hold\n"
-               "them. They live in this worker's own Secret."}),
+      ("hubw","pxe","IPMI","Publish the boot entry","publishing-pxe-boot",
+       {"call":"the site's PXE VM: publish the InfraEnv's iPXE script as its boot entry",
+        "recv":"a newer entry already there counts as success",
+        "warn":"One entry per InfraEnv, published once the image includes this host."}),
 
-      ("hubw","res","both","Write BareMetalHost","For a virtual machine, its Redfish endpoint.",
-       {"call":"CREATE metal3.io/v1alpha1 BareMetalHost",
-        "send":"labels: {infraenvs.agent-install.openshift.io: <infra_env>}\n"
-               "spec: online: true, bootMACAddress: <bond member 1>,\n"
-               "      customDeploy: {method: start_assisted_install},\n"
-               "      automatedCleaningMode: disabled, bootMode: UEFI,\n"
-               "      bmc: {address, credentialsName, disableCertificateVerification}",
-        "warn":"Create-if-absent with identity verification, NOT server-side apply. An\n"
-               "existing object is success once BMC address, boot MAC, InfraEnv and VLAN\n"
-               "match, and a conflict for a human when they differ. Nothing is ever\n"
-               "overwritten, so an operator's hand correction survives a re-run."}),
+      ("hubw","res","both","Write Secret, BMH, NMState","creating-* · labelled installed-by",
+       {"call":"CREATE Secret · metal3.io BareMetalHost · NMStateConfig   (create-if-absent)",
+        "send":"BareMetalHost ocp-c200-mtl-five-fch2145v1ab\n"
+               "  bootMACAddress: <bond member 1>   online: true\n"
+               "  customDeploy: start_assisted_install\n"
+               "labels:\n"
+               "  infraenvs.agent-install.openshift.io: c200-mtl-az1\n"
+               "  redbull.io/installed-by: <this run's workflow id>",
+        "warn":"installed-by lets the controller count the machine once: in flight until\n"
+               "its Agent exists, then as a free Agent. A VM's BareMetalHost points at\n"
+               "its Redfish endpoint on kubevirt-redfish.\n\n"
+               "Built today: the installed-by label is still to be built (procedure 01, §8)."}),
 
-      ("res","ienv","both","Image regenerates","Must include this host's config, or it boots an older one.",
-       {"call":"GET agent-install.openshift.io/v1beta1 InfraEnv",
-        "recv":"status.conditions[ImageCreated].status\n"
-               "status.createdTime\n"
-               "status.bootArtifacts.ipxeScript",
-        "warn":"TWO conditions, not one. ImageCreated must be True, because it goes False\n"
-               "when a generation FAILED and its message is the only place the cause\n"
-               "appears. AND createdTime must be no older than this host's NMStateConfig.\n"
-               "Checking only the timestamp passes an image made before the failure."}),
+      ("res","srv","both","Boot the discovery image","Ironic powers the host on.",
+       {"call":"Ironic, through the BMC: virtual media, or PXE for IPMI",
+        "recv":"the host boots the InfraEnv's discovery image with its NMStateConfig",
+        "warn":"A VM boots the same way, through kubevirt-redfish."}),
 
-      ("hubw","pxe","IPMI","Publish the boot entry","Only now the image includes this host.",
-       {"call":"PUT /pxe-map/<mce_cluster>/<infra_env>",
-        "send":"{ \"ipxe_url\": ..., \"image_created_at\": ... }",
-        "recv":"409 means a NEWER image is already published: that is success",
-        "warn":"Distinct from mapping the MAC earlier. One entry per InfraEnv, not one per\n"
-               "host, so republishing a regenerated image is one write. Compare-and-set on\n"
-               "image_created_at, so a slow run can never roll an entry backwards."}),
+      ("srv","agt","both","Agent registers","awaiting-agent · up to an hour",
+       {"call":"LIST agent-install.openshift.io/v1beta1 Agent   (matched to the host)",
+        "recv":"an Agent, unbound, labelled from the InfraEnv's agentLabels:\n"
+               "  redbull.io/flavor · size · site · topology.kubernetes.io/zone",
+        "warn":"The Agent proves BMC, bond, VLAN and DHCP all worked.\n\n"
+               "No Agent within the hour: NMStateConfig and BareMetalHost removed, IPMI\n"
+               "MACs unmapped, the server set to MAINTENANCE in server-scan, the lock\n"
+               "released, and the run fails with AgentNeverAppearedError."}),
 
-      ("ienv","agt","both","Agent registers","The only proof BMC, bond, VLAN and DHCP all worked.",
-       {"call":"LIST agent-install.openshift.io/v1beta1 Agent",
-        "recv":"match on the bmh label, or on any MAC the Agent reports\n"
-               "spec.clusterDeploymentName empty -> it is spare inventory",
-        "warn":"An hour is budgeted, because bare metal POSTs for longer than a VM boots.\n"
-               "The MAC fallback exists because an Agent is named after a hardware UUID\n"
-               "and holds no reference back to the BareMetalHost."}),
+      ("hubw","scan","both","Hold, then release","holding-server · releasing-lock",
+       {"call":"server-scan: extend the lock to a day; read the server every 5 minutes",
+        "recv":"INSTALLED_TO_INVENTORY or INSTALLED  -> the lock is released",
+        "warn":"The lock keeps the machine out of every other MCE's draw until server-scan\n"
+               "sees it installed. Unseen within the day, the lock expires and the run\n"
+               "completes."}),
 
-      ("hubw","scan","both","Hold for 24h","Until something reports the machine claimed.",
-       {"call":"POST /servers/{id}/reservation   with ttl_seconds: 86400",
-        "warn":"Same workflow id, so this EXTENDS the lease rather than racing it. Needed\n"
-               "because the inventory only learns a machine is taken when a cluster reports\n"
-               "it, every 15 minutes."}),
-
-      ("agt","ctl","both","Next pass sees it","No parent is waiting. The loop is the controller.",
-       {"call":"nothing — the run has completed and exited",
-        "recv":"the controller's next pass, within 2 minutes, lists Agents again",
-        "warn":"Nothing owns convergence, and that is deliberate. A failed slot simply\n"
-               "leaves the gap open and the next pass notices. The evaluation cycle IS the\n"
-               "retry, which is why there is no pool-level attempt counter."}),
+      ("agt","ctl","both","Counted once","The next pass sees a free Agent.",
+       {"call":"the controller's next pass lists the pool's Agents",
+        "recv":"the new Agent counts as free; its run, still holding the lock, is\n"
+               "matched through installed-by and counted once",
+        "warn":"A NodePool claims the Agent like any other. Once bound, the controller\n"
+               "labels it redbull.io/claimed (AD34)."}),
     ])
 
 WORKFLOWS["02-remove-server-from-mce"] = dict(
@@ -1223,7 +1265,7 @@ if __name__ == "__main__":
         html = page(cfg["title"], cfg["subtitle"], cfg["nodes"],
                     cfg["group"], cfg["steps"],
                     cfg.get("mode_labels", ("Pool", "Bare metal", "Virtual")),
-                    cfg.get("tags"))
+                    cfg.get("tags"), cfg.get("look"))
         (HERE / f"{name}.html").write_text(html, encoding="utf-8")
         print(f"wrote {name}.html")
     print(f"\n{len(WORKFLOWS)} animations generated.")
