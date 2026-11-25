@@ -171,21 +171,25 @@ A fresh Agent is never removed; only used Agents are collected (AD34).
 
 ## Config
 
-A ConfigMap on the hub, re-read on change. Growth and collection both start in dry run.
+| ConfigMap | Purpose |
+|---|---|
+| `inventory-controller-config` | The controller's own settings for its hub |
 
 ```yaml
-# ConfigMap: inventory-controller-config, key: config.yaml
-defaults:
-  spares: 2            # R1: fresh Agents kept ready in each pool
-  maxOpenRunsPerPool: 15
-  probeInterval: 20m
-  dryRunGrow: true     # R1: log intended orders; set false per pool to go live
-  dryRunCollect: true  # R3: log intended removals; set false to go live
-pools:
-  c200-mtl-az1:
-    spares: 3
-  c200-kv32-az1:
-    spares: 5
+# inventory-controller-config.yml
+data:
+  config.yaml: |
+    defaults:
+      spares: 2              # R1: fresh Agents kept ready in each pool
+      maxOpenRunsPerPool: 15
+      probeInterval: 20m
+      dryRunGrow: true       # R1: log intended orders; set false per pool to go live
+      dryRunCollect: true    # R3: log intended removals; set false to go live
+    pools:
+      c200-mtl-az1:
+        spares: 3
+      c200-kv32-az1:
+        spares: 5
 ```
 
 The collector's grace period and its limit of removals open per pool are set in the same file.
