@@ -1,208 +1,148 @@
-# KV Capacity Controller — specification
+# KV Capacity Controller
 
-Version 0.2. Normative. "MUST", "MUST NOT" and "SHOULD" carry their usual meaning.
-Decisions: AD27, AD28, AD30, AD31 in [architecture.md](architecture.md).
+The KV Capacity Controller automates the manual work of sizing KV clusters. Its job is to grow KV
+clusters' NodePools as VMs fill them, and to keep an empty standby KV cluster ready. It runs on
+every Seed and manages the KV clusters that Seed hosts.
 
----
+**Implementation:** not started.
 
-## 1 :: Scope
+**Version:** 0.3
 
-### 1.1 In scope
-
-| # | Responsibility |
-|---|---|
-| R1 | Grow the zone's active KV cluster so its free CPU stays at the policy's target |
-| R2 | Keep the zone's standby KV clusters built, starting a new one when one is missing |
-| R3 | Report zone capacity |
-
-### 1.2 Out of scope, with owner
-
-| Not this controller | Owner |
-|---|---|
-| Choosing the KV cluster for a VM, and creating it | `create-vm` workflow ([design](https://github.com/team-redbull/workflows/blob/docs/create-vm-placement/docs/design/create-vm-placement.md)) |
-| Keeping bare-metal Agents ready for a raised NodePool | herzi on the Seed ([inventory-controller.md](inventory-controller.md)) |
-| Writing a NodePool total | `update-nodepool` workflow (Git, AD22) |
-| Creating a KV cluster | `provision-cluster` workflow (Git, AD22) |
-| Choosing a hypervisor within a cluster, packing VMs onto nodes | KubeVirt scheduler with `HighNodeUtilization`, descheduler `CompactAndScale` (AD30) |
-| Shrinking or deleting a KV cluster | Nothing. Clusters only grow (AD26, AD28) |
-| The capacity policy values | Platform repo, edited through Wingman (AD31) |
+**Decisions:** AD27, AD28, AD30, AD31, AD33, AD35 in [architecture.md](architecture.md).
 
 ---
 
-## 2 :: Deployment
+## Requirements
 
-| Property | Value |
-|---|---|
-| Instances | Exactly one per Seed cluster, which is one per zone |
-| Leader election | Required. Lease in the controller's own namespace |
-| On loss of lease | Exit immediately |
-| Zone identity | From configuration, immutable at runtime |
-| State | None. Every figure is derived per pass; a restart costs one pass |
-| Dry run | Supported. Logs the orders it would send instead of sending them |
-
----
-
-## 3 :: Configuration
-
-Two sources, both mounted files, re-read on change. Invalid configuration MUST leave the
-last good configuration in effect and set `kvcc_config_valid` to 0.
-
-**The capacity policy (AD31).** A ConfigMap rendered by ArgoCD from the platform repo's
-policy file. `create-vm` reads the same file; the controller MUST NOT carry its own copy of
-these values.
-
-| Key | Type | Value | Meaning |
-|---|---|---|---|
-| `maxNodes` | int | 40 | Hard size of a KV cluster, organisation-wide |
-| `freeCpuPercent` | int | 15 | Free CPU kept above used CPU; the live-migration reserve |
-| `standbyWorkers` | int | 1 to 5 | Bare-metal workers a standby cluster is built with |
-| `standbyClusters` | int | 1 | Standby clusters kept per zone |
-
-**The controller's own settings.**
-
-| Key | Type | Default | Constraint |
-|---|---|---|---|
-| `zone` | string | — | Required, non-empty |
-| `site` | string | — | Required, non-empty |
-| `reconcileInterval` | duration | `60s` | > 0 |
-| `clusterReadTimeout` | duration | `10s` | > 0 |
-| `dryRun` | bool | `true` | Set false to send orders |
-
----
-
-## 4 :: Inputs
-
-Read from the Seed:
-
-| Resource | Fields used |
-|---|---|
-| `hypershift.openshift.io/v1beta1 HostedCluster` | `metadata.name`, `metadata.creationTimestamp`, `status.conditions` |
-| `hypershift.openshift.io/v1beta1 NodePool` | `spec.clusterName`, `spec.replicas`, `status.replicas`, `status.conditions` |
-
-Read from each KV cluster through its admin kubeconfig, which lives on the Seed beside the
-cluster's hosted control plane. Capacity is computed with **the same rules `create-vm`'s
-placement uses** ([design](https://github.com/team-redbull/workflows/blob/docs/create-vm-placement/docs/design/create-vm-placement.md), §6), so placement and growth count
-used CPU the same way (AD31).
-
-| Read | Used for |
-|---|---|
-| Nodes, Ready and not cordoned, with allocatable CPU | `nodeCpu`, the cluster's capacity |
-| Requests of every non-finished pod on those nodes | `used` |
-| Every Halted VM, in any namespace, at its pod's request (vCPU × 15/16, memory + 1 GiB) | `used`. kubevirt-redfish will start them |
-| VMs present | Whether the cluster holds any VM |
-
----
-
-## 5 :: Model
-
-Clusters of the zone are ordered by creation, oldest first. Evaluated per pass.
-
-```
-replicas(C)      NodePool.spec.replicas of KV cluster C
-used(C)          CPU requested on C: active pods + Halted VM reservations
-nodeCpu(C)       allocatable CPU of one schedulable node of C
-holdsVms(C)      C has at least one VM
-
-active           the oldest C with replicas(C) < maxNodes
-standby          every C after active where not holdsVms(C)
-
-largestVm        CPU request of the largest VM size offered
-target(C)        ceil( (used(C) + largestVm) / (1 − freeCpuPercent/100) / nodeCpu(C) )
-                 bounded to [standbyWorkers, maxNodes]
-```
-
-**Rule 5.1.** Active and standby MUST be derived from observed state on every pass and
-never stored. Promotion needs no action: when the active cluster reaches `maxNodes`, the
-oldest cluster below it becomes active, and `create-vm` overflows into it once the old one
-reaches its buffer.
-
-**Rule 5.2.** `used` MUST include Halted VMs, as `create-vm`'s placement does. Otherwise
-the controller sees room that placement has already promised.
-
-**Rule 5.2a.** The target MUST divide by `1 − freeCpuPercent`, the same ceiling placement
-applies (fill after placing ≤ `1 − buffer`). Multiplying `used` by `1 + freeCpuPercent` instead
-lets a cluster reach about 87% while placement refuses past 85%, so VMs are turned away while
-the controller sees nothing to grow. Adding the largest VM keeps room for the next request
-instead of growing only after it is refused.
-
-**Rule 5.3.** Free CPU is meaningful as whole empty nodes only because clusters bin-pack
-(AD30). The controller SHOULD alert when a cluster's free CPU is at target but it has no
-empty node (`kvcc_cluster_empty_nodes == 0`), because the reserve then cannot take a drain.
-
----
-
-## 6 :: Reconcile loop
-
-Runs every `reconcileInterval` on the leader only.
-
-```
-1. grow     if target(active) > replicas(active):
-                update-nodepool  cluster=active  total=target(active)
-2. standby  if count(standby) < standbyClusters:
-                provision-cluster  name=next KV cluster name  replicas=standbyWorkers
-```
-
-**Rule 6.1.** Totals are absolute, never deltas. A repeated order for the same total is a
-no-op.
-
-**Rule 6.2.** Only the active cluster is ever grown. A cluster at `maxNodes` is never grown,
-and a standby is not grown until it becomes active.
-
-**Rule 6.3.** Deduplication is the workflow id: `update-nodepool-<cluster>-<node-type>` and
-`provision-cluster-<cluster>`. The controller MUST NOT keep its own record of what is in
-flight. A `409` for a run already going is success.
-
-**Rule 6.4.** The next cluster's name is the lowest unused `<env>-<site>-<zone>-kv<nn>`
-(§9 of the architecture).
-
-**Rule 6.5.** A cluster that could not be read MUST NOT be counted as standby, MUST NOT be
-treated as active, and MUST NOT by itself trigger a new cluster. If no cluster in the zone
-could be read, the loop takes no action.
-
----
-
-## 7 :: Failure behaviour
-
-**7.1** A rejected or failed order leaves the gap open, and the next pass sees it. The
-evaluation cycle is the retry.
-
-**7.2** `create-vm` returning `NoKvClusterFitsError` means this controller has fallen behind
-(AD27). It is an alert, not a condition the controller acts on separately.
-
-**7.3** A cluster that cannot be read is excluded for that pass only. Nothing is retained.
-
----
-
-## 8 :: Observability
-
-### 8.1 Metrics
-
-| Name | Type | Labels |
+| ID | Requirement | Description |
 |---|---|---|
-| `kvcc_cluster_replicas` | gauge | `cluster` |
-| `kvcc_cluster_target_nodes` | gauge | `cluster` |
-| `kvcc_cluster_free_cpu_percent` | gauge | `cluster` |
-| `kvcc_cluster_empty_nodes` | gauge | `cluster` |
-| `kvcc_cluster_role` | gauge | `cluster`, `role` ∈ {`active`,`standby`,`full`} |
-| `kvcc_zone_standby_clusters` | gauge | — |
-| `kvcc_orders_total` | counter | `kind` ∈ {`grow`,`standby`}, `result` |
-| `kvcc_cluster_read_errors_total` | counter | `cluster` |
-| `kvcc_config_valid` | gauge | — |
-
-### 8.2 Alerts
-
-| Alert | Expression | For | Severity |
-|---|---|---|---|
-| `KvccNoStandby` | `kvcc_zone_standby_clusters < 1` | 30m | critical |
-| `KvccBelowTarget` | `kvcc_cluster_free_cpu_percent{role="active"} < 15` | 30m | warning |
-| `KvccNoEmptyNode` | `kvcc_cluster_empty_nodes == 0 and kvcc_cluster_free_cpu_percent >= 15` | 1h | warning |
-| `KvccClusterUnreadable` | `increase(kvcc_cluster_read_errors_total[10m]) > 0` | 10m | warning |
-| `KvccConfigInvalid` | `kvcc_config_valid == 0` | 1m | warning |
-| `KvccControllerDown` | `absent(kvcc_config_valid)` | 10m | critical |
+| R1 | Update KV cluster NodePool replicas | Watch the NodePool's capacity, and increase its replicas based on the free-CPU policy. |
+| R2 | Keep a standby KV cluster | Keep an empty KV cluster ready on the Seed, so a node type that outgrows the working clusters finds room at once (AD35). It is created through `provision-cluster`. |
 
 ---
 
-## 9 :: Access
+## Terms
+
+| Term | Meaning |
+|---|---|
+| **KV cluster** | A hosted cluster on the Seed whose bare-metal workers run KubeVirt VMs |
+| **Working cluster** | A KV cluster with at least one NodePool |
+| **Standby cluster** | A KV cluster on the Seed with its control plane only |
+| **Requested CPU** | CPU requested on a NodePool: the pods running on its nodes, plus the Halted VMs that would start on it, each at its pod's request |
+| **Reserve** | The share of a cluster's CPU kept free: `freeCpuPercent` from the capacity policy, the live-migration reserve. It exists as whole empty nodes only because clusters bin-pack (AD30) |
+
+---
+
+## R1 · Update KV cluster NodePool replicas
+
+The controller checks every KV cluster's NodePools and adds a node to any NodePool that is 70% or
+more requested.
+
+| Rule | What the controller does |
+|---|---|
+| **Every 2 minutes** | One pass over the NodePools of every KV cluster on the Seed |
+| **NodePool by NodePool** | Each NodePool is measured on its own nodes. A cluster can hold NodePools of different CPU architectures, and VMs can't migrate between them, so one NodePool's free CPU is no use to another |
+| **Grows at 70% requested** | When the CPU requested on a NodePool reaches 70% of its capacity, the controller adds a node to it. Requested means the pods running on its nodes plus the Halted VMs that would start on it. Capacity includes nodes still joining, so the controller adds another node only if the NodePool would still be at 70% or more with them |
+| **One node at a time** | It raises that NodePool's replicas by one |
+| **40 nodes per cluster** | A cluster's size is the sum of replicas across all its NodePools. At 40, none of its NodePools grows |
+| **Opens the standby when clusters are full** | When a node type's NodePools are at 70% and every working cluster holding them is at 40 nodes, the controller calls `update-nodepool` on the standby for that node type, with `standbyWorkers` (5) replicas. `update-nodepool` creates the NodePool, and R1 grows it from then on |
+
+```
+every 2 minutes, for each NodePool P of each working KV cluster C:
+    requested(P) = CPU requests of pods on P's nodes + Halted VMs that would start on P
+    capacity(P)  = replicas(P) × CPU of one node        # nodes still joining included
+    if requested(P) ≥ growAtCpuPercent of capacity(P):
+        if sum of replicas over C's NodePools < maxNodes:
+            update-nodepool  cluster=C  nodepool=P  replicas=replicas(P) + 1
+        else if every working cluster with P's node type is at maxNodes:
+            update-nodepool  cluster=standby  nodetype=type(P)  replicas=standbyWorkers
+```
+
+### What it reads
+
+Each KV cluster is read through its admin kubeconfig, which lives on the Seed beside the cluster's
+hosted control plane. Requests are counted the way `create-vm`'s placement counts them
+([design](https://github.com/team-redbull/workflows/blob/docs/create-vm-placement/docs/design/create-vm-placement.md), §6), Halted VMs included (AD31).
+
+| Read | From | Used for |
+|---|---|---|
+| `HostedCluster` (`hypershift.openshift.io/v1beta1`): `metadata.name`, `status.conditions` | The Seed | The KV clusters |
+| `NodePool` (`hypershift.openshift.io/v1beta1`): `spec.clusterName`, `spec.replicas`, `status.replicas`, `status.conditions` | The Seed | Each NodePool's capacity, and its cluster's size |
+| Nodes, Ready and not cordoned, by their `hypershift.openshift.io/nodePool` label, with allocatable CPU | Each KV cluster | The CPU of one node of each NodePool |
+| CPU requests of every non-finished pod on those nodes | Each KV cluster | Requested |
+| Every Halted VM, at its pod's request (vCPU × 15/16, memory + 1 GiB), on the NodePool it would start on | Each KV cluster | Requested. kubevirt-redfish will start them |
+
+### Talking to Temporal
+
+| | |
+|---|---|
+| Order | `update-nodepool` with `cluster=C`, `nodepool=P`, `replicas=replicas(P) + 1`; on the standby, `nodetype=type(P)`, `replicas=standbyWorkers` |
+| Deduplication | The workflow id, `update-nodepool-<cluster>-<node-type>`. The controller keeps no record of what is in flight; a `409` for a run already going is success |
+
+- **A rejected or failed order leaves the gap open,** and the next pass sees it. The evaluation
+  cycle is the retry.
+- **A cluster that cannot be read** is left out for that pass only. Nothing is retained.
+
+---
+
+## R2 · Keep a standby KV cluster
+
+The controller keeps one empty KV cluster ready on the Seed: a hosted cluster with its control plane
+running and no NodePools. It costs only control-plane pods, and node types get NodePools on it when
+they need room (R1).
+
+| Rule | What the controller does |
+|---|---|
+| **A standby is an empty KV cluster** | A KV cluster on the Seed with its control plane only |
+| **Keeps one ready** | When the Seed has fewer standbys than `standbyClusters` (1), the controller orders a new KV cluster through `provision-cluster`, with no NodePools |
+| **Hands over by itself** | Once the standby gets its first NodePool, it is a working cluster, and the controller orders the next standby |
+| **Acts on change** | It runs whenever a HostedCluster or NodePool on the Seed changes, and every 30 minutes as a safety net. It reads only the Seed |
+| **Names the next cluster** | The lowest unused `<env>-<site>-<zone>-kv<nn>` (§9 of the architecture) |
+| **Deduplicates by workflow ID** | `provision-cluster-<cluster>`. A `409` for a run that is already going counts as success |
+
+```
+on a HostedCluster or NodePool change, and every 30 minutes:
+    standby = KV clusters on the Seed with zero NodePools
+    if count(standby) < standbyClusters:
+        provision-cluster  name=next KV cluster name  nodepools=none
+```
+
+A node type new to the Seed gets its first NodePool from an operator through Wingman, with one
+`update-nodepool` call on the standby. R1 grows it from then on.
+
+---
+
+## Config
+
+| ConfigMap | Purpose |
+|---|---|
+| `capacity-policy` | The organisation-wide capacity values (AD31), shared with `create-vm` |
+| `kv-capacity-controller-config` | The controller's own settings for its Seed |
+
+```yaml
+# capacity-policy.yml
+data:
+  maxNodes: "40"               # hard size of a KV cluster, organisation-wide
+  freeCpuPercent: "15"         # free CPU kept above used CPU; the live-migration reserve
+  growAtCpuPercent: "70"       # requested CPU, as a share of a NodePool's capacity, at which the controller adds a node
+  standbyWorkers: "5"          # the replicas a node type's first NodePool on the standby gets
+  standbyClusters: "1"         # standby clusters kept per Seed
+```
+
+```yaml
+# kv-capacity-controller-config.yml
+data:
+  zone: az1                    # required; never changes at runtime
+  site: five                   # required; never changes at runtime
+  reconcileInterval: 2m        # greater than zero
+  standbyCheckInterval: 30m    # R2's safety check, on top of reacting to changes
+  clusterReadTimeout: 10s      # greater than zero
+  dryRun: "true"               # logs the orders it would send; set false to send them
+```
+
+---
+
+## Access
 
 | Where | What | Verbs |
 |---|---|---|
@@ -211,18 +151,35 @@ evaluation cycle is the retry.
 | Each KV cluster | Nodes, pods, VirtualMachines, VirtualMachineInstances, through the admin kubeconfig on the Seed | get, list |
 | Orchestrator API | `update-nodepool`, `provision-cluster` | start |
 
-The controller holds no credential that can write to a KV cluster. Every change goes through
-a workflow and Git.
+The controller holds no credential that can write to a KV cluster. Every change goes through a
+workflow and Git.
 
 ---
 
-## 10 :: Open items
+## Why it is built this way
+
+| Decision | Reason |
+|---|---|
+| Exactly one controller per Seed cluster | It reads and orders only for the KV clusters its own Seed hosts, so a zone with a second Seed simply has a second, independent controller |
+| Leader election, and exit on losing the lease | Two pods during a rollout never order at the same time |
+| Stores nothing; derives every figure each pass | A restart costs one pass |
+| Counts requested CPU as `create-vm` does, Halted VMs included | Placement and growth agree on what is free (AD31) |
+| Orders absolute totals, deduplicated by workflow id | A repeated order is harmless, and the controller keeps no record of what is in flight |
+| Every change through a workflow and Git | NodePool totals and new clusters stay in Git (AD22) |
+| Starts in dry run | It logs the orders it would send until it is trusted to send them |
+
+---
+
+## Open
 
 | # | Item |
 |---|---|
-| O1 | `update-nodepool` exists on the branch `feat/update-nodepool`, not yet merged. It addresses a cluster's NodePools by name or by kind, with id `update-nodepool-<cluster>` (§6.3 should follow) |
-| O2 | `provision-cluster` waits for a human merge. A standby cluster therefore needs a person to merge it, which the lead time of one standby must absorb |
-| O3 | A zone holding KV clusters of more than one server type: one active/standby chain per server type, or one per zone |
-| O4 | The capacity policy file's path and owner in the platform repo |
-| O5 | `HEADROOM_BUFFER_PERCENT` in `create-vm` defaults to 30 and is set per KV cluster worker, not rendered from the policy file (AD31) |
-| O6 | `HighNodeUtilization` and `CompactAndScale` are not confirmed on any KV cluster (AD30) |
+| O1 | `update-nodepool` exists on the branch `feat/update-nodepool`, not yet merged. It addresses a cluster's NodePools by name or by kind, with id `update-nodepool-<cluster>`; the deduplication in R1 still uses `update-nodepool-<cluster>-<node-type>` |
+| O2 | `provision-cluster` waits for a human merge. A standby cluster therefore needs a person to merge it, and that wait comes out of the standby's lead time |
+| O3 | The capacity policy file's path and owner in the platform repo |
+| O4 | `HEADROOM_BUFFER_PERCENT` in `create-vm` defaults to 30 and is set per KV cluster worker, not rendered from the policy file (AD31) |
+| O5 | `HighNodeUtilization` and `CompactAndScale` are not confirmed on any KV cluster (AD30) |
+| O6 | Credentials: each KV cluster is read through its admin kubeconfig, which can write, while Access says the controller holds no credential that can write. Either a read-only ServiceAccount on each KV cluster, created by `provision-cluster`, or keep the admin kubeconfig and drop that sentence |
+| O7 | `create-vm` checks whether a VM fits per KV cluster, not per NodePool. With NodePools of different CPU architectures it has to check the NodePool that matches the VM, or `create-vm` and the controller count capacity differently (AD31) |
+| O8 | `update-nodepool` creates a NodePool when it is missing, from the cluster, the node type and the replicas. Today it changes existing NodePools only |
+| O9 | The Seed's limit: how many KV clusters a Seed holds. The controller orders a standby while the Seed is below it |

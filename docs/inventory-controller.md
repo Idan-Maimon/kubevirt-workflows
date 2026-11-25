@@ -6,6 +6,8 @@ each Customer MCE, and each Seed.
 
 **Implementation:** [team-redbull/herzi](https://github.com/team-redbull/herzi)
 
+**Version:** 0.2
+
 ---
 
 ## Requirements
@@ -172,6 +174,7 @@ A fresh Agent is never removed; only used Agents are collected (AD34).
 A ConfigMap on the hub, re-read on change. Growth and collection both start in dry run.
 
 ```yaml
+# ConfigMap: inventory-controller-config, key: config.yaml
 defaults:
   spares: 2            # R1: fresh Agents kept ready in each pool
   maxOpenRunsPerPool: 15

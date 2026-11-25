@@ -16,6 +16,8 @@ All names are lowercase (Kubernetes names must be).
 | **Cluster** (seed, KV) | `ocp4-<lifecycle>-<seed\|kv>-<site>-<zone>-<id>` | `ocp4-prod-seed-five-az1-a`<br>`ocp4-prod-kv-five-az1-a` |
 | **Node** (VM or bare metal) | `ocp-<flavor>-<mtl\|kv<cpu>>-<site>-<serial\|mac>` | `ocp-c200-mtl-five-fch2145v1ab`<br>`ocp-c200-kv32-five-02a1b2c3d4e5` |
 | **InfraEnv** | `<flavor>-<mtl\|kv<cpu>>-<zone>` | `c200-mtl-az1`<br>`c200-mtl-az3`<br>`c200-kv32-az1` |
+| **Controller ConfigMap** | `<controller>-config`, where `<controller>` is the controller's name, in the controller's own namespace | `inventory-controller-config`<br>`kv-capacity-controller-config` |
+| **Capacity policy ConfigMap** | `capacity-policy`, on every Seed | `capacity-policy` |
 
 | Segment | Meaning |
 |---|---|
