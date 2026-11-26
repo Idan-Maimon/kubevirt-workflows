@@ -89,7 +89,7 @@
 <body>
 <header>
   <h1>02 :: Remove Server from MCE</h1>
-  <div class="sub">One start per server takes it out of an MCE's inventory, so a machine that has served a cluster is never reused as it is (AD23). Bare metal goes back to server-scan for a full reinstall; a VM is deleted as the last step (AD36). Where main differs today, the step says so (procedure 02, §6).</div>
+  <div class="sub">One start per server takes it out of an MCE's inventory, so a machine that has served a cluster is never reused as it is (AD23). Bare metal goes back to server-scan for a full reinstall; a VM is deleted right after metal3 releases its host, before the Agent (AD36). Where main differs today, the step says so (procedure 02, §6).</div>
   <div class="legend">
     <span><i style="background:#3ecf8e"></i>requester</span>
     <span><i style="background:#4da3ff"></i>orchestration</span>
@@ -344,6 +344,30 @@ const RAW   = [
     }
   ],
   [
+    "tmp",
+    "kvw",
+    "VM",
+    "Delete the VM",
+    "deleting-vm \u00b7 on the cluster's own queue",
+    {
+      "call": "delete_vm_on_cluster -> queue of ocp4-prod-kv-five-az1-a's worker",
+      "send": "every VM labelled redbull.io/created-by: <run id>, in every namespace",
+      "warn": "The cluster comes from the BareMetalHost's redbull.io/kv-cluster, read in\nthe first step. Run as soon as metal3 has let the host go, since the label\nwent with it and this run is now the only record. Retried until the cluster answers (procedure 22).\n\nBuilt today: this step is still to be built (procedure 02, \u00a76)."
+    }
+  ],
+  [
+    "kvw",
+    "vm",
+    "VM",
+    "VM and root disk gone",
+    "Room given back to the cluster.",
+    {
+      "call": "DELETE kubevirt.io/v1 VirtualMachine ocp-c200-kv32-five-k7q2m9xd",
+      "recv": "the VM and its root disk deleted",
+      "warn": "A Halted VM counts as used for placement and for the KV Capacity\nController, so the room shows as soon as it is gone."
+    }
+  ],
+  [
     "hubw",
     "agt",
     "both",
@@ -375,30 +399,6 @@ const RAW   = [
     {
       "call": "inspect again until no Agent, BareMetalHost or NMStateConfig is left",
       "recv": "done, or ServerStillPresentError naming what is left"
-    }
-  ],
-  [
-    "tmp",
-    "kvw",
-    "VM",
-    "Delete the VM",
-    "deleting-vm \u00b7 on the cluster's own queue",
-    {
-      "call": "delete_vm_on_cluster -> queue of ocp4-prod-kv-five-az1-a's worker",
-      "send": "every VM labelled redbull.io/created-by: <run id>, in every namespace",
-      "warn": "The cluster comes from the BareMetalHost's redbull.io/kv-cluster, read in\nthe first step. Retried until the cluster answers (procedure 22).\n\nBuilt today: this step is still to be built (procedure 02, \u00a76)."
-    }
-  ],
-  [
-    "kvw",
-    "vm",
-    "VM",
-    "VM and root disk gone",
-    "Room given back to the cluster.",
-    {
-      "call": "DELETE kubevirt.io/v1 VirtualMachine ocp-c200-kv32-five-k7q2m9xd",
-      "recv": "the VM and its root disk deleted",
-      "warn": "A Halted VM counts as used for placement and for the KV Capacity\nController, so the room shows as soon as it is gone."
     }
   ],
   [

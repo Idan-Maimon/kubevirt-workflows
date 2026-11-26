@@ -163,7 +163,7 @@ When a used Agent is free again, the controller removes its server from the MCE.
 | Rule | Detail |
 |---|---|
 | **When** | A used Agent that is unbound, not deleting, and unchanged for a grace period |
-| **How** | Start `remove-server-from-mce-<server>`: it deletes the BareMetalHost and NMStateConfig, so metal3 powers the host off, deletes the Agent last and clears the PXE entries. A bare-metal server returns to server-scan for a full reinstall; a VM is deleted as the last step (AD36, [procedure 22](procedures/22-delete-vm.md)) |
+| **How** | Start `remove-server-from-mce-<server>`: it deletes the BareMetalHost and NMStateConfig, so metal3 powers the host off, deletes the Agent last and clears the PXE entries. A bare-metal server returns to server-scan for a full reinstall; a VM is deleted right after metal3 releases its host, before the Agent (AD36, [procedure 22](procedures/22-delete-vm.md)) |
 | **Never deletes the Agent itself** | A host still running discovery would register again within a minute, as a fresh, unlabelled Agent |
 | **Never fights a run** | A server with an open uninstall, remove or named install run is skipped. The workflow id is the server, so a repeated start is a 409, never a second removal |
 | **Paced** | At most a set number of removals open per pool, so a deleted cluster does not start all its removals at once |

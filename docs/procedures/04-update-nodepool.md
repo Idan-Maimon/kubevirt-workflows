@@ -86,8 +86,8 @@ machine for each waiting worker, using a spare first (AD26, [01](01-add-server-t
 
 **Scaling down.** CAPI deletes the marked Machines, their nodes drain, and their Agents come free.
 Each of those Agents is used, labelled `redbull.io/claimed`, so no NodePool claims it again. The
-Inventory Controller collects it through `remove-server-from-mce`, which deletes a VM as its last
-step (AD34, AD36, [02](02-remove-server-from-mce.md)). A machine that has served a cluster is never
+Inventory Controller collects it through `remove-server-from-mce`, which also deletes a VM
+(AD34, AD36, [02](02-remove-server-from-mce.md)). A machine that has served a cluster is never
 reused as it is (AD23).
 
 Demand and supply meet only in what the hub shows.

@@ -18,8 +18,8 @@
 
 Take one server out of an MCE's inventory, so a machine that has served a cluster is never reused
 as it is (AD23). Bare metal goes back to server-scan, and the next install draws it and installs it
-from scratch. A VM is deleted as the run's last step ([22 :: Delete VM](22-delete-vm.md)), so one
-start covers both (AD36).
+from scratch. A VM is deleted as soon as metal3 has let its BareMetalHost go, before the Agent
+([22 :: Delete VM](22-delete-vm.md)), so one start covers both (AD36).
 
 The run covers a server that is inventory only. An Agent still bound to a cluster refuses the run
 before anything changes.
@@ -52,9 +52,30 @@ before anything changes.
 | 2 | Refusal | MCE queue | An Agent bound to a cluster (`spec.clusterDeploymentName`) ends the run with `AgentBoundToClusterError` | Nothing has changed |
 | 3 | `removing-host` | MCE queue | Delete the NMStateConfig and the BareMetalHost, re-checking first that no Agent is bound. metal3 deprovisions the deleted host: it powers the host off through its BMC (a VM through kubevirt-redfish), deletes its Ironic node, and only then releases its finalizer | |
 | 4 | `awaiting-bmh-deletion` | MCE queue | Read the BareMetalHost every 15 seconds until metal3 releases it, then delete its BMC Secret | After 15 minutes, `BmhDeletionTimeoutError` with the Agent untouched; usually a BMC that is not answering |
-| 5 | `removing-agent`, `removing-pxe-boot` | MCE queue | Delete the Agent, re-checked as unbound right before. Clear every MAC of the host from the PXE VM of the MCE's site, keeping any MAC that points at another MCE's boot entry | The PXE cleanup is best effort: a failure is reported in `pxe_failed`, and the removal completes |
-| 6 | `verifying` | MCE queue | Inspect again until no Agent, BareMetalHost or NMStateConfig is left | `ServerStillPresentError`, naming what is left |
-| 7 | `deleting-vm` | KV cluster's worker | **VMs only.** Delete the VM on the KV cluster named by `redbull.io/kv-cluster`, found by its `redbull.io/created-by` label ([22](22-delete-vm.md)) | Retried until the cluster answers |
+| 5 | `deleting-vm` | KV cluster's worker | **VMs only.** Delete the VM on the KV cluster named by `redbull.io/kv-cluster`, found by its `redbull.io/created-by` label ([22](22-delete-vm.md)) | Retried until the cluster answers. A failure no retry can fix does not stop the removal: steps 6 and 7 still run, and the run then fails naming the VM's KV cluster and run id |
+| 6 | `removing-agent`, `removing-pxe-boot` | MCE queue | Delete the Agent, re-checked as unbound right before. Clear every MAC of the host from the PXE VM of the MCE's site, keeping any MAC that points at another MCE's boot entry | The PXE cleanup is best effort: a failure is reported in `pxe_failed`, and the removal completes |
+| 7 | `verifying` | MCE queue | Inspect again until no Agent, BareMetalHost or NMStateConfig is left | `ServerStillPresentError`, naming what is left |
+
+### Why the VM goes right after its host
+
+The VM is deleted as soon as metal3 has let its BareMetalHost go, not after the rest of the
+removal:
+
+- **Not before.** metal3 releases a host only after powering it off through its BMC, and a VM's
+  BMC is its own kubevirt-redfish. A VM deleted under a live BareMetalHost would leave metal3
+  unable to finish, and would leave the boot ISO disk kubevirt-redfish made for it, which it deletes
+  only when metal3 ejects the media.
+- **Not later.** Once the BareMetalHost is gone, its two labels are gone too: the only record of
+  which KV cluster holds the VM, and which VM there, is the running removal itself. Every step
+  between "host gone" and "VM gone" is a step where a failure or a terminate leaves a Halted VM
+  that a re-run can no longer find (open question 1). Deleting it right away leaves only the
+  delete's own failure or a terminate.
+- **And it settles the host.** A deleted VM cannot boot again and register a fresh Agent while the
+  Agent and PXE entries are being cleared.
+
+For the same reason a failure to delete the VM does not stop the removal: the Agent and the PXE
+entries are cleared and checked as for any server, and the run fails at the end, naming the KV
+cluster and the run id, so a person can finish the VM's delete.
 
 ### Why the Agent goes last
 
@@ -104,7 +125,7 @@ its TTL.
 | # | Architecture | Built today |
 |---|---|---|
 | 1 | The Inventory Controller starts this run for every used Agent that is free again (AD34) | herzi starts only `add-server-to-mce`; the collector is a proposal (herzi PR #1) |
-| 2 | For a VM, the run deletes the VM as its last step (AD36) | Still to be built. Today the VM stays on its KV cluster, Halted: counted against its cluster's capacity, and still offered by server-scan while it keeps its `redfish-enabled` label |
+| 2 | For a VM, the run deletes the VM right after metal3 releases its BareMetalHost (AD36) | Still to be built. Today the VM stays on its KV cluster, Halted: counted against its cluster's capacity, and still offered by server-scan while it keeps its `redfish-enabled` label |
 | 3 | A VM's BareMetalHost carries `redbull.io/kv-cluster` and `redbull.io/created-by` | Still to be built (naming convention, open item 5) |
 | 4 | Phases 1 to 6, as above | Built |
 
