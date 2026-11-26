@@ -46,6 +46,7 @@
 | C6 | A single HostedCluster's NodePools cannot span multiple MCE Hubs. The HostedCluster control plane runs on one MCE Hub, and that Hub must manage all NodePools for that cluster. This constrains tenant-to-Hub affinity and impacts capacity planning |
 | C7 | KubeVirt Live Migration requires shared storage. VMs can only live-migrate between hypervisor nodes that share a storage backend. This is a KubeVirt/libvirt constraint. It also means live migration cannot cross AZ boundaries if the storage backend is AZ-scoped. The choice of storage product is made in the storage design document, not here |
 | C8 | A VM cannot live-migrate to a host with an older CPU generation, because the guest is exposed to the source host's CPU features and the destination must present at least the same set. Inventory therefore has to track back to the physical server type: a VM pool is bound to the hardware it was built on, which is why the InfraEnv name carries the server type and why the same VM size on two server types is two separate pools (AD21). Like C7, this bounds where a running VM may move |
+| C9 | Cisco UCS limits a server's name to 32 characters. A bare-metal node is named `ocp-<flavor>-mtl-<site>-<serial>` (naming convention), so with an 11-character Cisco serial the site name has at most 6 characters: `ocp-` (4) + flavor with variant (5) + `-mtl-` (5) + site + `-` (1) + serial (11) = 26 + site. The provisioning workflow checks a name's length before writing it to OME or UCS |
 
 ---
 
@@ -100,6 +101,9 @@
 | AD33 | VMs Placed on the First KV Cluster That Fits, in Creation Order | It fills the oldest cluster before the next, so each cluster grows to 40 nodes in turn (AD28) and the standby stays empty until the active one is full (AD35). |
 | AD34 | The Inventory Controller Collects Used Agents | A machine that has served a cluster must not be reused as it is (AD23). Machines leave clusters in many ways: a scale-down, a repair, an uninstall, a deleted cluster. Collecting on the hub covers all of them in one place. Labelling an Agent while it is bound stops another NodePool from claiming it before it is collected. |
 | AD35 | A Standby KV Cluster Is Always Ready in Each Zone | Building a KV cluster takes much longer than creating a VM, and VM creation must not wait for one when the active cluster fills. The standby's few workers take the first VMs at once while it grows. |
+| AD36 | Removing a VM Server Deletes Its VM in the Same Workflow | Every caller of `remove-server-from-mce` (the Inventory Controller, `uninstall-server-from-hc`, a cancelled install) then destroys a VM the same way, so no path leaves one to be reused as it is (AD23) or to hold its KV cluster's capacity while Halted. |
+| AD37 | Objects Are Labelled With the Run ID That Made Them | A pool slot's workflow id is used again by later runs, so a label carrying it can point at an earlier run's machine, and the Inventory Controller would take a new install for one already delivered. A run id belongs to one run only. |
+| AD38 | VM Names End in a Random Serial, Not the MAC | A VM is named before it exists, when its MAC is unknown: KubeMacPool assigns it at admission, and a requested MAC can be admitted on several VMs at once. The serial is also the VM's SMBIOS serial, so the Agent's inventory reports the serial the name carries, as a bare-metal node's name carries its hardware serial. |
 
 ---
 
@@ -160,34 +164,18 @@ The OCP KubeVirt platform provides a fully automated, GitOps-driven lifecycle fo
 
 ---
 
-## 9 :: Naming Conventions
-
-| Object | Convention | Reason |
-|---|---|---|
-| **OCP Cluster** | Infrastructure: `<env>-<site>[-<zone>]-<type><nn>`<br>Hosted clusters: `<env>-<site>-hc-<tenant>`<br><br>Examples:<br>`neta-batyam-mce01`<br>`neta-batyam-z1-seed01`<br>`neta-batyam-z1-kv02`<br>`neta-batyam-hc-payments` | Ordered from largest scope to smallest so clusters group by prefix across network, site and zone. The name is immutable, so every segment must be something that never changes for the cluster's life |
-| **NodePool** | TBD | |
-| **InfraEnv** | `<internal-server-type>[-<variant>]-<zone>-<size>`<br>where `<size>` is `metal` for a physical server, or `small`, `medium` or `large` for a VM<br><br>Examples:<br>`conf203-zone-a-metal`<br>`conf203-zone-a-small`<br>`conf203-infiniband-zone-b-large` | The InfraEnv name is the pool key and the prefix used to draw candidates from Server Scanner. The server type is the internal name for a hardware configuration, and the optional variant marks any change to it such as infiniband, networking or disks. The hub is not part of the name, because the Temporal workflow id carries the MCE as its own segment |
-| **VM / BM hostname** | Must match `^ocp-<infra_env>` | Server Scanner draws candidates by this prefix and parses the site from the hostname. VMs must follow the same convention as BM servers or they will neither land in a site nor match a draw |
-| **KubeVirt Namespace** | TBD | A warm-pool VM belongs to no HostedCluster when it is created, so the namespace cannot be keyed on one |
-| **BareMetalHost** | TBD | |
-| **NMStateConfig** | TBD | |
-| **BMC Secret** | TBD | |
-| **Temporal Workflow ID** | `install-server-<mce>_<infra-env>_<slot>` for a pool slot, numbered 1 to 100<br>`install-server-<mce>_<server>` for a named install<br>`update-nodepool-<cluster>-<node-type>`<br><br>Example:<br>`install-server-ocp4-mce01_32-128-zone-a_7` | The workflow id is the deduplication key. Temporal allows one running workflow per id, so the id must be stable per target and must not contain the mutable value. The MCE segment carries the `ocp4-` prefix and is rejected without it. The hundred pool slots are a fixed allocation shared with the install route, so the slot id is also how the controller discovers whether a slot is busy |
-
----
-
-## 12 :: Glossary
+## 9 :: Glossary
 
 ### Infrastructure
 
 | Term | Definition |
 |---|---|
-| **AZ (Availability Zone)** | A logical failure domain composed of a fixed set of physical DC racks (e.g., Racks 1–5 = Zone A). Power, network, and cooling boundaries align with AZ boundaries. |
-| **BM (Bare Metal)** | A physical server node. In this architecture, BM nodes are the foundation for both the Seed Cluster and KV Cluster worker nodes. |
-| **Cell** | A bounded unit of infrastructure capacity. A cell encompasses one KV Cluster, its hosting Seed Cluster resources, and the associated MCE inventory pool. Cell boundaries define the maximum number of VMs allowed before a new cell is created. |
-| **KV Cluster (KubeVirt Cluster)** | A HyperShift hosted cluster whose control plane runs as pods on the Seed Cluster and whose worker nodes are BM machines with KubeVirt enabled. KV clusters are where tenant workload VMs physically run. |
-| **Seed Cluster** | A per-zone bare-metal cluster (UPI-installed) running MCE and HyperShift operators. Hosts the control planes of all KV clusters in its zone and serves as the zone's infrastructure management plane (AD17). |
-| **VM Type** | One of three fixed sizes: small at 16 cores, medium at 32, large at 64. The size, the underlying server type and the zone together index inventory and form the InfraEnv name. A physical server takes `metal` in place of a size. |
+| **AZ (Availability Zone)** | A failure domain: a fixed set of physical racks whose power, network and cooling boundaries align, named `az1`, `az2`, `az3`. A server's zone is the zone of the Cisco ACI leaf it is cabled to, as server-scan records it. |
+| **BM (Bare Metal)** | A physical server. Bare metal runs the Seed clusters and the KV clusters' hypervisors, and the bare-metal workers of hosted clusters. |
+| **Cell** | One KV cluster with its share of its Seed: the unit of KubeVirt capacity. It grows to 40 nodes (AD28); the zone's next VMs then go to the next cluster, and a standby KV cluster is always ready (AD33, AD35). |
+| **KV Cluster (KubeVirt Cluster)** | A HyperShift hosted cluster whose control plane runs as pods on a Seed and whose workers are bare-metal KubeVirt hypervisors, where tenant VMs run. Single-zone (AD8), grown by the KV Capacity Controller up to 40 nodes (AD28), named `ocp4-<lifecycle>-kv-<site>-<zone>-<id>`. |
+| **Seed Cluster** | A bare-metal cluster (UPI-installed) in one zone, running MCE and HyperShift. It hosts the control planes of the zone's KV clusters and serves as the zone's infrastructure management plane (AD17). A zone gets a second Seed when one reaches its limits. |
+| **VM Size** | `kv<cpu>`: a VM's vCPU count, e.g. `kv32`, with `<cpu> × 7.5` GiB of memory. With the server configuration and the zone it forms a VM InfraEnv's name, `<flavor>-kv<cpu>-<zone>`; bare metal takes `mtl` in its place ([naming convention](naming-convention.md)). |
 | **ODF (OpenShift Data Foundation)** | Red Hat's shared storage solution. One candidate for the shared backend that KubeVirt Live Migration requires (C7). The selection is made in the storage design document. |
 | **LVMO (LVM Operator)** | Local volume management operator. Provides local, not shared, storage, so it cannot support live migration (C7). |
 
@@ -198,22 +186,27 @@ The OCP KubeVirt platform provides a fully automated, GitOps-driven lifecycle fo
 | **MCE (Multicluster Engine)** | Red Hat's operator for managing multiple OpenShift clusters. Provides HyperShift, Assisted Installer, and agent-based provisioning. In this architecture there are two distinct MCE roles: the Seed Cluster MCE (infrastructure) and the Customer MCE (tenant hub). |
 | **Customer MCE** | The tenant-facing Hub cluster. Manages InfraEnvs, agents, and hosted clusters for one version band of OCP. Masters: one VM per zone; workers: VMs distributed across zones (AD19, AD20). |
 | **HCP (Hosted Control Plane)** | The control plane of a hosted cluster running as pods on the Hub or Seed Cluster, rather than on dedicated master nodes. Enables decoupling of control plane from data plane (AD1, AD18). |
-| **HC (Hosted Cluster)** | A tenant OpenShift cluster whose control plane runs as an HCP on the Customer MCE and whose workers are VMs provisioned via MCE inventory. |
-| **NodePool** | A HyperShift resource defining a group of worker nodes for an HC, targeting a specific zone and VM type. Each HC has three NodePools — one per zone. |
-| **InfraEnv** | An MCE resource that generates a discovery ISO. VMs boot this ISO and register as agents in the MCE inventory. One InfraEnv exists per zone per VM type. |
-| **Agent** | A VM that has booted the InfraEnv discovery ISO, completed hardware discovery, and registered with MCE. Available to be claimed by a NodePool. |
-| **BMH (BareMetalHost)** | A Metal3 resource representing a physical or virtual bare-metal host managed by the Ironic provisioning engine. In this architecture, VMs are exposed as BMHs via the `kubevirt-redfish-controller` (AD3). |
+| **HC (Hosted Cluster)** | A tenant OpenShift cluster whose control plane runs as an HCP on the Customer MCE and whose workers are VMs or bare metal from the MCE's pools (AD29). |
+| **NodePool** | A HyperShift resource defining a group of workers for a hosted cluster. It selects Agents by label (flavor, size, zone) and excludes claimed ones ([naming convention](naming-convention.md)). A tenant cluster has one NodePool per zone; a KV cluster has one per node type. |
+| **InfraEnv** | An MCE resource that generates a discovery ISO; a machine, VM or bare metal, boots it and registers as an Agent. One InfraEnv per server configuration, size and zone on each MCE, `<flavor>-<mtl\|kv<cpu>>-<zone>`, shared by every consumer (AD21). Its `agentLabels` label its Agents. |
+| **Agent** | A machine, VM or bare metal, that has booted an InfraEnv's discovery ISO and registered with the MCE, ready for a NodePool to claim. Fresh until bound; once bound it is labelled `redbull.io/claimed`, and once free again it is collected (AD34). |
+| **BMH (BareMetalHost)** | A Metal3 resource representing a physical or virtual host, managed by Ironic. VMs appear as BareMetalHosts through kubevirt-redfish (AD3), which exposes each VM as a Redfish system. |
 | **UPI (User Provisioned Infrastructure)** | An OpenShift installation method where the operator manually provisions the underlying servers. Used for Seed Clusters because no automation layer exists yet at that stage. |
+| **Inventory Controller (herzi)** | Runs on every MCE hub. It keeps a fixed number of spare Agents in each pool, orders a machine for every worker waiting for an Agent (AD26), labels bound Agents `redbull.io/claimed` and collects them once free (AD34). |
+| **KV Capacity Controller** | Runs on every Seed. It adds a node to any KV NodePool at 70% requested CPU, up to 40 nodes a cluster, and keeps an empty standby KV cluster ready (AD27, AD28, AD35). |
 
 ### Inventory & Capacity
 
 | Term | Definition |
 |---|---|
-| **Warm Pool** | A stock of pre-provisioned VMs already registered in the MCE inventory as agents, waiting to be claimed. Enables deterministic, low-latency cluster provisioning (AD14). |
+| **Warm Pool** | A pool's spare Agents, VMs or bare metal, registered and waiting to be claimed. The Inventory Controller keeps their number at the pool's spares (AD14, AD26). |
 | **Low Watermark** | The number of fresh Agents the Inventory Controller keeps free in one pool, on every MCE hub: a fixed number per pool, set in its ConfigMap (AD26). Machines are ordered when a pool falls below it, or when a worker is waiting for an Agent. |
-| **High Watermark** | The upper bound on a cell's VM count, owned by the infrastructure MCE rather than by the Customer MCE's Inventory Controller. Reaching it triggers creation of a new KV Cluster within the same zone. The controller that enforces it is not yet designed. |
-| **Server Scanner** | A global service that bridges MCE, the Assisted Installer agent state, and the underlying KubeVirt hypervisors. Tracks the strict lifecycle state of every VM across all KV clusters and zones, indexed by zone and VM type (AD15). |
-| **VM Lifecycle States** | The four states tracked by Server Scanner: **Available** — in warm pool, ready to be claimed; **In-Use** — assigned to a NodePool; **Quarantined** — isolated due to failure or suspicious behaviour; **Draining** — workloads migrating away, pending removal. |
+| **High Watermark** | The size at which a KV cluster stops growing: `maxNodes` (40) in the capacity policy (AD28, AD31). Beyond it, VMs go to the next cluster, and the KV Capacity Controller keeps a standby ready (AD35). |
+| **Free-CPU Reserve** | The 15% of a NodePool's CPU kept free for live migration: `create-vm` places VMs up to 85% (AD28). The KV Capacity Controller grows a NodePool from 70%, so new nodes arrive while the reserve is still free. |
+| **Standby KV Cluster** | An empty KV cluster on a Seed, with its control plane only, ready for the first NodePool of a node type that the working clusters can no longer grow (AD35). |
+| **Capacity Policy** | The ConfigMap `capacity-policy` on every Seed, rendered from one Git file edited through Wingman (AD31): `maxNodes`, `freeCpuPercent`, `growAtCpuPercent`, `standbyWorkers`, `standbyClusters`. |
+| **server-scan** | The inventory of record for every server and VM. It collects them, holds each server's zone from its ACI leaf, and allocates and locks one server for each install (AD15). |
+| **Server States** | The states server-scan holds for a server or VM, among them available, `INSTALLED_TO_INVENTORY` (in an MCE's inventory), `INSTALLED` (in a cluster) and `MAINTENANCE` (out of every draw until a person clears it). |
 
 ### Orchestration
 
@@ -223,9 +216,11 @@ The OCP KubeVirt platform provides a fully automated, GitOps-driven lifecycle fo
 | **ArgoCD** | GitOps continuous delivery tool. Watches the Git repository and applies desired-state changes to clusters. The sole state applicator; no component applies changes directly to clusters (AD5). |
 | **GitOps / SSOT** | The practice of using Git as the single source of truth for all cluster state. All changes flow through Git commits observed by ArgoCD, ensuring immutable, auditable state (AD5, AD13). |
 | **DLQ (Dead Letter Queue)** | Temporal's mechanism for capturing workflows that have exhausted all retries. Failed operations are sent to the DLQ for manual investigation and remediation. |
-| **Compensating Transaction** | An idempotent operation that reverses or neutralises the effect of a previous step when a workflow fails mid-execution (e.g., releasing a quarantined node back to the warm pool). |
-| **Redfish** | A REST-based DMTF standard API for out-of-band server hardware management. Used by the `kubevirt-redfish-controller` to expose KubeVirt VMs as virtual BMCs, enabling MCE to treat them as bare-metal hosts (AD3). |
-| **IPMI** | Intelligent Platform Management Interface. An alternative hardware management protocol used by Server Scanner alongside Redfish to query VM and host state. |
+| **Compensating Transaction** | An idempotent operation that reverses or neutralises the effect of a previous step when a workflow fails mid-execution, e.g. `add-server-to-mce` removing the resources it created when no Agent appears. |
+| **Run ID** | Temporal's id for one execution of a workflow, never reused. A pool slot's workflow id is reused by later runs, so a label names the run that made an object by its run id (AD37). |
+| **Zone Lock** | The `kv-zone-lock` run of a site and zone. It hands the zone to one `create-vm` run at a time, which chooses a KV cluster while it holds the lock (AD32). |
+| **Redfish** | A REST-based DMTF standard API for out-of-band server management. kubevirt-redfish uses it to expose each VM labelled `redfish-enabled` as a virtual BMC, so the MCE installs and powers VMs like bare-metal hosts (AD3). |
+| **IPMI** | Intelligent Platform Management Interface: the management protocol of servers without virtual media, such as Cisco UCS blades. They PXE-boot their discovery image from the site's PXE VM ([procedure 01](procedures/01-add-server-to-mce.md)). |
 
 ### Upgrades
 
