@@ -6,9 +6,9 @@
 |---|---|
 | **Trigger** | A tenant (through Wingman) or an SRE: shrink one NodePool by one worker |
 | **Two modes** | **Named:** remove this node. **Any:** remove one node, the NodePool's policy or CAPI chooses |
-| **Built as** | A scale-down of `update-nodepool` (`team-redbull/workflows`, branch `feat/update-nodepool`), **not a separate workflow** |
+| **Built as** | A scale-down of `update-nodepool` (`team-redbull/workflows`, on `main`), **not a separate workflow** |
 | **Workflow id** | `update-nodepool-<cluster>`, one in flight per cluster |
-| **Ends at** | The machine is out of the cluster and out of the MCE, and destroyed (VM) or handed back for reinstall (bare metal) |
+| **Ends at** | The marked Machine deleting. The Inventory Controller then collects the machine: a VM is deleted, and bare metal goes back to server-scan for a full reinstall (AD34, AD36) |
 
 > **A shrink is a lower replica count, never a deleted Machine.** Deleting a Machine object
 > makes the MachineSet replace it at once, so the node comes back on another machine and the
@@ -62,20 +62,31 @@ Add an optional `node_name` to the request, valid only with `nodepool` and
    Report the unhealthy Machine and let the caller decide.
 4. Report `chosen_matches_requested` in the result.
 
-### 3.2 Release the machine per AD23 (finding 1)
+### 3.2 The Inventory Controller collects the machine (AD34)
 
-Today the run ends once the NodePool shows the new count, and the released machine returns to
-its InfraEnv as a free Agent. Instead, the run follows the Machine CAPI deleted to the end:
+The run ends once the marked Machine is deleting, and leaves the machine to the Inventory
+Controller:
 
-| Step | Action |
-|---|---|
-| Await drain and unbind | The Machine and AgentMachine gone, the Node gone, the Agent unbound. Bounded waits that name what blocks them |
-| Remove from the MCE | `remove-server-from-mce` as an awaited child: power off, BareMetalHost, NMStateConfig, Agent, PXE map |
-| Destroy a VM | Delete the VirtualMachine on its KV cluster by name **and** MAC |
-| Bare metal | Returns to server-scan and is reinstalled from scratch by the next install that draws it |
+| Step | Who | Action |
+|---|---|---|
+| Drain and unbind | CAPI and the Agent provider | The Node drains, the Machine and AgentMachine go, and the Agent comes free |
+| Held out of the pool | Every NodePool | The Agent has carried `redbull.io/claimed` since it was bound (R2), and every NodePool excludes the label |
+| Collect | The Inventory Controller | It starts `remove-server-from-mce-<server>` for the used Agent (R3) |
+| VM | `remove-server-from-mce` | The VM is deleted as the run's last step, by its run-id label (AD36) |
+| Bare metal | server-scan | Reinstalled from scratch by the next install that draws it |
 
-Reuse `uninstall-server-from-hc`'s verification steps for the waits rather than writing new ones.
-The Inventory Controller sees the pool's demand drop and orders nothing back (AD26).
+The cluster's run slot is free as soon as the Machine is deleting, so the cluster takes its next
+change while the machine is still being collected. The Inventory Controller orders nothing back,
+since no worker is waiting for an Agent (AD26).
+
+#### Alerts on what follows a NodePool change
+
+| Alert | Fires when | Usually means |
+|---|---|---|
+| Machine stuck deleting | A Machine has been deleting for more than 30 minutes | A drain blocked by a PodDisruptionBudget, or a stuck finalizer |
+| NodePool not converged | A NodePool's ready nodes differ from its replicas for more than 60 minutes | Something in the scale is stuck |
+| Worker waiting for an Agent | An AgentMachine has shown `NoSuitableAgents` for more than 60 minutes | Supply is short: herzi or server-scan is out of hardware |
+| Used Agent not collected | herzi's own alert (R3) | Collection is stuck |
 
 ### 3.3 Guards (findings 4 and 5)
 

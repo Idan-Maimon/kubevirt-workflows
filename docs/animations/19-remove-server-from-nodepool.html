@@ -77,7 +77,7 @@
 <body>
 <header>
   <h1>19 :: Remove Server from NodePool</h1>
-  <div class="sub">A scale-down of update-nodepool by one worker: mark the Machine, lower the count, let CAPI delete what was marked, then release the machine. Steps marked (to add) are not on the branch yet.</div>
+  <div class="sub">A scale-down of update-nodepool by one worker: mark the Machine, lower the count, let CAPI delete what was marked; the Inventory Controller then collects the machine. Steps marked (to add) are not on the branch yet.</div>
 </header>
 
 <div class="wrap">
@@ -140,7 +140,7 @@ const NODES = {
     "w": 170,
     "h": 54,
     "t": "Inventory Controller",
-    "s": "sees demand drop"
+    "s": "collects used Agents"
   },
   "git": {
     "x": 415,
@@ -290,56 +290,61 @@ const RAW   = [
     "hc",
     "both",
     "Drain the Node",
-    "Cordon and evict. Bounded wait. (to add)",
+    "Cordon and evict, after the run has ended.",
     {
-      "warn": "A PodDisruptionBudget can block the drain. The wait fails naming the pods\nand the budgets involved."
+      "warn": "The run has already ended, so the cluster takes its next change. A drain held by\na PodDisruptionBudget raises the alert 'Machine stuck deleting' after 30 minutes."
     }
   ],
   [
     "hub",
     "hub",
     "both",
-    "Agent unbound",
-    "The provider's pre-terminate hook releases it. (to add)"
-  ],
-  [
-    "tmp",
-    "hub",
-    "both",
-    "Remove from the MCE",
-    "remove-server-from-mce as a child. (to add)",
+    "Agent free, already claimed",
+    "Labelled redbull.io/claimed since it was bound (R2).",
     {
-      "call": "child: remove-server-from-mce",
-      "warn": "Power off, BareMetalHost, NMStateConfig, Agent, PXE map. Without this the\nmachine returns to the pool as a free Agent with the last tenant's disk (AD23)."
-    }
-  ],
-  [
-    "tmp",
-    "kv",
-    "VM",
-    "Destroy the VM",
-    "By name and MAC. (to add)",
-    {
-      "call": "delete VirtualMachine <name> on its KV cluster",
-      "warn": "Name AND MAC: if someone replaced the VM, the MAC differs and the VM is\nleft alone."
-    }
-  ],
-  [
-    "hub",
-    "scan",
-    "BM",
-    "Back to server-scan",
-    "Reinstalled from scratch by the next install that draws it. (to add)",
-    {
-      "warn": "Reinstalling overwrites the install disk only. Whether bare metal is also\nwiped is still open (D5)."
+      "warn": "Every NodePool's selector excludes the label, so no NodePool claims it again."
     }
   ],
   [
     "hub",
     "ctl",
     "both",
-    "Demand dropped",
-    "The pool's target falls; nothing is ordered back (AD26)."
+    "The controller finds it",
+    "A used Agent, free again (R3, AD34).",
+    {
+      "warn": "One path collects every released machine: a scale-down, a repair, an uninstall,\na deleted cluster. Built today: herzi's collector is still to be built."
+    }
+  ],
+  [
+    "ctl",
+    "tmp",
+    "both",
+    "Collect the machine",
+    "remove-server-from-mce, one start per server.",
+    {
+      "call": "POST /workflows/server-lifecycle/remove-server-from-mce   server_name=<server>"
+    }
+  ],
+  [
+    "tmp",
+    "kv",
+    "VM",
+    "The VM is deleted",
+    "The removal's last step (AD36).",
+    {
+      "call": "delete_vm_on_cluster, by the BareMetalHost's redbull.io/created-by",
+      "warn": "Built today: this step is still to be built (procedure 02, \u00a76)."
+    }
+  ],
+  [
+    "tmp",
+    "scan",
+    "BM",
+    "Back to server-scan",
+    "Reinstalled from scratch by the next install that draws it.",
+    {
+      "warn": "Reinstalling overwrites the install disk only. Whether bare metal is also\nwiped is still open (D5)."
+    }
   ]
 ];
 const HAS_MODES = true;

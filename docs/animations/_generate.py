@@ -698,12 +698,12 @@ WORKFLOWS["04-update-nodepool"] = dict(
 WORKFLOWS["19-remove-server-from-nodepool"] = dict(
     title="19 :: Remove Server from NodePool",
     subtitle="A scale-down of update-nodepool by one worker: mark the Machine, lower the count, "
-             "let CAPI delete what was marked, then release the machine. Steps marked (to add) "
+             "let CAPI delete what was marked; the Inventory Controller then collects the machine. Steps marked (to add) "
              "are not on the branch yet.",
     nodes={"cust": N(30, 36, "Wingman", "tenant or SRE"),
            "tmp":  N(400, 36, "Temporal", "update-nodepool", 200),
            "scan": N(800, 36, "server-scan", "fleet inventory"),
-           "ctl":  N(30, 172, "Inventory Controller", "sees demand drop"),
+           "ctl":  N(30, 172, "Inventory Controller", "collects used Agents"),
            "git":  GIT,
            "kv":   N(800, 172, "KV Cluster", "the VM"),
            "hc":   N(30, 300, "Hosted cluster", "the Node drains"),
@@ -759,27 +759,27 @@ WORKFLOWS["19-remove-server-from-nodepool"] = dict(
        {"warn":"Never delete the Machine directly. The MachineSet would replace it at once,\n"
                "and the next scale-down would remove a second node."}),
 
-      ("capi","hc","both","Drain the Node","Cordon and evict. Bounded wait. (to add)",
-       {"warn":"A PodDisruptionBudget can block the drain. The wait fails naming the pods\n"
-               "and the budgets involved."}),
+      ("capi","hc","both","Drain the Node","Cordon and evict, after the run has ended.",
+       {"warn":"The run has already ended, so the cluster takes its next change. A drain held by\n"
+               "a PodDisruptionBudget raises the alert 'Machine stuck deleting' after 30 minutes."}),
 
-      ("hub","hub","both","Agent unbound","The provider's pre-terminate hook releases it. (to add)"),
+      ("hub","hub","both","Agent free, already claimed","Labelled redbull.io/claimed since it was bound (R2).",
+       {"warn":"Every NodePool's selector excludes the label, so no NodePool claims it again."}),
 
-      ("tmp","hub","both","Remove from the MCE","remove-server-from-mce as a child. (to add)",
-       {"call":"child: remove-server-from-mce",
-        "warn":"Power off, BareMetalHost, NMStateConfig, Agent, PXE map. Without this the\n"
-               "machine returns to the pool as a free Agent with the last tenant's disk (AD23)."}),
+      ("hub","ctl","both","The controller finds it","A used Agent, free again (R3, AD34).",
+       {"warn":"One path collects every released machine: a scale-down, a repair, an uninstall,\n"
+               "a deleted cluster. Built today: herzi's collector is still to be built."}),
 
-      ("tmp","kv","VM","Destroy the VM","By name and MAC. (to add)",
-       {"call":"delete VirtualMachine <name> on its KV cluster",
-        "warn":"Name AND MAC: if someone replaced the VM, the MAC differs and the VM is\n"
-               "left alone."}),
+      ("ctl","tmp","both","Collect the machine","remove-server-from-mce, one start per server.",
+       {"call":"POST /workflows/server-lifecycle/remove-server-from-mce   server_name=<server>"}),
 
-      ("hub","scan","BM","Back to server-scan","Reinstalled from scratch by the next install that draws it. (to add)",
+      ("tmp","kv","VM","The VM is deleted","The removal's last step (AD36).",
+       {"call":"delete_vm_on_cluster, by the BareMetalHost's redbull.io/created-by",
+        "warn":"Built today: this step is still to be built (procedure 02, §6)."}),
+
+      ("tmp","scan","BM","Back to server-scan","Reinstalled from scratch by the next install that draws it.",
        {"warn":"Reinstalling overwrites the install disk only. Whether bare metal is also\n"
                "wiped is still open (D5)."}),
-
-      ("hub","ctl","both","Demand dropped","The pool's target falls; nothing is ordered back (AD26)."),
     ])
 
 WORKFLOWS["20-remove-node-flow-draft"] = dict(
@@ -797,7 +797,7 @@ WORKFLOWS["20-remove-node-flow-draft"] = dict(
            "kv":   N(800, 172, "KV Cluster", "VMs destroyed"),
            "argo": N(30, 300, "ArgoCD", "applies the NodePool"),
            "capi": N(800, 300, "CAPI MachineSet", "ranks, deletes top N"),
-           "ctl":  N(30, 430, "Inventory Controller", "sees demand drop"),
+           "ctl":  N(30, 430, "Inventory Controller", "collects used Agents"),
            "hub":  N(380, 430, "MCE Hub API", "Machines · Agents: direct", 240),
            "hc":   N(800, 430, "Hosted cluster", "Nodes drain")},
     group=None,
@@ -851,22 +851,18 @@ WORKFLOWS["20-remove-node-flow-draft"] = dict(
                "Ready=False. Putting them first makes the marked set CAPI's own top set, on 4.18\n"
                "as on 4.19+. That is why 'any node' needs no version check."}),
 
-      ("tmp","hub","both","Mark, and record each Agent","Direct API, not Git: annotation on the Machine; Agent and server saved in the run.",
-       {"call":"annotate Machine  cluster.x-k8s.io/delete-machine=<workflow id>\n"
-               "record  Machine -> agent://<agent> -> server name",
-        "warn":"Recorded now, while the Machine still exists: it is gone after the scale-down."}),
+      ("tmp","hub","both","Mark the Machines","Direct API, not Git: the delete-machine annotation.",
+       {"call":"annotate Machine  cluster.x-k8s.io/delete-machine=<workflow id>"}),
 
-      ("tmp","hub","both","Label the Agents","Direct API, not Git: redbull.io/uninstalling, before the commit.",
+      ("hub","hub","both","Agents already claimed","Labelled redbull.io/claimed since they were bound (R2).",
        {"warn":"Harmless on a bound Agent: the provider reads a NodePool's selector only when it\n"
-               "picks a FREE Agent. Once released, a labelled Agent cannot be claimed by any other\n"
-               "NodePool on the hub. Needs the NodePool selector (DoesNotExist) in the chart.\n"
-               "On 4.18 with 'any node', label every Machine CAPI could pick, and unlabel the\n"
-               "survivors once the deleting set is known."}),
+               "picks a FREE Agent. Once released, a claimed Agent is claimed by no other\n"
+               "NodePool, since every NodePool excludes the label."}),
 
       ("tmp","git","both","Newest target? Then commit","The only Git write: the NodePool's count, compare-and-set, one batch.",
        {"call":"commit nodepool(<cluster>): <np> replicas 18 -> 16   (batch of 2 per NodePool)",
         "warn":"Batches bound the capacity dip, as maxUnavailable does for upgrades. Each batch\n"
-               "is a full mark -> commit -> check -> release step."}),
+               "is a full mark -> commit -> check step."}),
 
       ("tmp","argo","both","Sync to that commit","ArgoCD applies the NodePool's new count."),
       ("argo","hub","both","NodePool updated","The MCE's NodePool now wants fewer workers."),
@@ -878,22 +874,21 @@ WORKFLOWS["20-remove-node-flow-draft"] = dict(
                "unhealthy Machines first. A Machine already deleting (100) still outranks both."}),
 
       ("tmp","hub","both","Check the deleting set","Direct API: deleting == marked. Otherwise follow what is deleting.",
-       {"warn":"An unmarked Machine deleting (a repair started in between): follow it, label its\n"
-               "Agent, unlabel the Machine left behind, and report the difference."}),
+       {"warn":"An unmarked Machine deleting (a repair started in between): follow it and report\n"
+               "the difference. Its Agent is claimed too, so the controller collects it like the others."}),
 
       ("capi","hc","both","Drain the batch","In parallel, each with its own deadline."),
-      ("hub","hub","both","Agents unbound","Held out of the pool by the label."),
+      ("hub","hub","both","Agents unbound","Held out of the pool by redbull.io/claimed."),
 
-      ("tmp","hub","both","Release, one child per server","Direct API, outside the cluster's lock: remove-server-from-mce.",
-       {"call":"child per server: remove-server-from-mce-<server>",
-        "warn":"One stuck machine does not hold the others, and the cluster can take its next\n"
-               "change while machines are still being released."}),
+      ("hub","ctl","both","The controller collects them","Used Agents, free again (R3, AD34).",
+       {"call":"the Inventory Controller starts remove-server-from-mce-<server> for each",
+        "warn":"The run has already ended, so the cluster takes its next change while the\n"
+               "machines are still being collected. Built today: herzi's collector is still to\n"
+               "be built."}),
 
-      ("tmp","kv","both","VM destroyed; bare metal reinstalled","AD23: never reused as it is.",
-       {"warn":"VM: deleted by name and MAC. Bare metal: back to server-scan, reinstalled from\n"
-               "scratch by the next install that draws it."}),
-
-      ("hub","ctl","both","Demand dropped","Nothing is ordered back (AD26)."),
+      ("ctl","kv","both","VM deleted; bare metal reinstalled","AD23, AD36: never reused as it is.",
+       {"warn":"VM: deleted as remove-server-from-mce's last step, by its run-id label (AD36).\n"
+               "Bare metal: back to server-scan, reinstalled from scratch by the next install."}),
     ])
 
 WORKFLOWS["05-delete-hosted-cluster"] = dict(

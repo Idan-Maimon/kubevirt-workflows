@@ -172,7 +172,7 @@ const NODES = {
     "w": 170,
     "h": 54,
     "t": "Inventory Controller",
-    "s": "sees demand drop"
+    "s": "collects used Agents"
   },
   "hub": {
     "x": 380,
@@ -319,21 +319,20 @@ const RAW   = [
     "tmp",
     "hub",
     "both",
-    "Mark, and record each Agent",
-    "Direct API, not Git: annotation on the Machine; Agent and server saved in the run.",
+    "Mark the Machines",
+    "Direct API, not Git: the delete-machine annotation.",
     {
-      "call": "annotate Machine  cluster.x-k8s.io/delete-machine=<workflow id>\nrecord  Machine -> agent://<agent> -> server name",
-      "warn": "Recorded now, while the Machine still exists: it is gone after the scale-down."
+      "call": "annotate Machine  cluster.x-k8s.io/delete-machine=<workflow id>"
     }
   ],
   [
-    "tmp",
+    "hub",
     "hub",
     "both",
-    "Label the Agents",
-    "Direct API, not Git: redbull.io/uninstalling, before the commit.",
+    "Agents already claimed",
+    "Labelled redbull.io/claimed since they were bound (R2).",
     {
-      "warn": "Harmless on a bound Agent: the provider reads a NodePool's selector only when it\npicks a FREE Agent. Once released, a labelled Agent cannot be claimed by any other\nNodePool on the hub. Needs the NodePool selector (DoesNotExist) in the chart.\nOn 4.18 with 'any node', label every Machine CAPI could pick, and unlabel the\nsurvivors once the deleting set is known."
+      "warn": "Harmless on a bound Agent: the provider reads a NodePool's selector only when it\npicks a FREE Agent. Once released, a claimed Agent is claimed by no other\nNodePool, since every NodePool excludes the label."
     }
   ],
   [
@@ -344,7 +343,7 @@ const RAW   = [
     "The only Git write: the NodePool's count, compare-and-set, one batch.",
     {
       "call": "commit nodepool(<cluster>): <np> replicas 18 -> 16   (batch of 2 per NodePool)",
-      "warn": "Batches bound the capacity dip, as maxUnavailable does for upgrades. Each batch\nis a full mark -> commit -> check -> release step."
+      "warn": "Batches bound the capacity dip, as maxUnavailable does for upgrades. Each batch\nis a full mark -> commit -> check step."
     }
   ],
   [
@@ -388,7 +387,7 @@ const RAW   = [
     "Check the deleting set",
     "Direct API: deleting == marked. Otherwise follow what is deleting.",
     {
-      "warn": "An unmarked Machine deleting (a repair started in between): follow it, label its\nAgent, unlabel the Machine left behind, and report the difference."
+      "warn": "An unmarked Machine deleting (a repair started in between): follow it and report\nthe difference. Its Agent is claimed too, so the controller collects it like the others."
     }
   ],
   [
@@ -403,35 +402,28 @@ const RAW   = [
     "hub",
     "both",
     "Agents unbound",
-    "Held out of the pool by the label."
-  ],
-  [
-    "tmp",
-    "hub",
-    "both",
-    "Release, one child per server",
-    "Direct API, outside the cluster's lock: remove-server-from-mce.",
-    {
-      "call": "child per server: remove-server-from-mce-<server>",
-      "warn": "One stuck machine does not hold the others, and the cluster can take its next\nchange while machines are still being released."
-    }
-  ],
-  [
-    "tmp",
-    "kv",
-    "both",
-    "VM destroyed; bare metal reinstalled",
-    "AD23: never reused as it is.",
-    {
-      "warn": "VM: deleted by name and MAC. Bare metal: back to server-scan, reinstalled from\nscratch by the next install that draws it."
-    }
+    "Held out of the pool by redbull.io/claimed."
   ],
   [
     "hub",
     "ctl",
     "both",
-    "Demand dropped",
-    "Nothing is ordered back (AD26)."
+    "The controller collects them",
+    "Used Agents, free again (R3, AD34).",
+    {
+      "call": "the Inventory Controller starts remove-server-from-mce-<server> for each",
+      "warn": "The run has already ended, so the cluster takes its next change while the\nmachines are still being collected. Built today: herzi's collector is still to\nbe built."
+    }
+  ],
+  [
+    "ctl",
+    "kv",
+    "both",
+    "VM deleted; bare metal reinstalled",
+    "AD23, AD36: never reused as it is.",
+    {
+      "warn": "VM: deleted as remove-server-from-mce's last step, by its run-id label (AD36).\nBare metal: back to server-scan, reinstalled from scratch by the next install."
+    }
   ]
 ];
 const TAGS = {"BM": "picked", "VM": "any"};

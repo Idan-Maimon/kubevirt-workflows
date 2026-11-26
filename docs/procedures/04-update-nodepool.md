@@ -119,8 +119,6 @@ Demand and supply meet only in what the hub shows.
 
 ## 7 :: Open questions
 
-1. **Who releases the machines a scale-down frees:** `update-nodepool` itself, through a
-   `remove-server-from-mce` child, or the Inventory Controller alone (procedure 19, §3.2).
-2. **The NodePool floor.** A KV cluster's NodePools keep at least 5 nodes. For tenant NodePools
+1. **The NodePool floor.** A KV cluster's NodePools keep at least 5 nodes. For tenant NodePools
    the recommendation is one, so a zone stays in the cluster (procedure 19, D2). Where the floor is
    enforced is still open.
