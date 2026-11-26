@@ -97,7 +97,7 @@ they need room (R1).
 | **Keeps one ready** | When the Seed has fewer standbys than `standbyClusters` (1), the controller orders a new KV cluster through `provision-cluster`, with no NodePools |
 | **Hands over by itself** | Once the standby gets its first NodePool, it is a working cluster, and the controller orders the next standby |
 | **Acts on change** | It runs whenever a HostedCluster or NodePool on the Seed changes, and every 30 minutes as a safety net. It reads only the Seed |
-| **Names the next cluster** | The lowest unused `<env>-<site>-<zone>-kv<nn>` (§9 of the architecture) |
+| **Names the next cluster** | The lowest unused `ocp4-<lifecycle>-kv-<site>-<zone>-<id>` ([naming convention](naming-convention.md)) |
 | **Deduplicates by workflow ID** | `provision-cluster-<cluster>`. A `409` for a run that is already going counts as success |
 
 ```
