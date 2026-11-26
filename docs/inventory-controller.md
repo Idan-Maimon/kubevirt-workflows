@@ -6,7 +6,7 @@ each Customer MCE, and each Seed.
 
 **Implementation:** [team-redbull/herzi](https://github.com/team-redbull/herzi)
 
-**Version:** 0.2
+**Version:** 0.3
 
 ---
 
@@ -79,7 +79,7 @@ When `need` is above zero, the controller orders that many machines.
 | `spares` | The number of spares to keep in this pool: a fixed number, set in the ConfigMap | herzi's ConfigMap: `spares` for the pool, else the default (see Config) |
 | `pending` | Waiting claims of watched NodePools that this pool can satisfy | AgentMachines of NodePools labelled `redbull.io/inventory-managed: "true"`, which the Agent provider (cluster-api-provider-agent) left without an Agent: `status.agentRef` empty and condition `AgentReserved=False`, reason `NoSuitableAgents`. Each carries its NodePool's selector in `spec.agentLabelSelector` |
 | `free` | Fresh Agents free in this pool now | Agents carrying the pool's labels, without `redbull.io/claimed` |
-| `inFlight` | Machines on their way to this pool | Install runs currently running in Temporal on the pool's slots, `add-server-to-mce-<mce>_<infraEnv>_<slot>`. A run whose Agent already exists (labelled `redbull.io/installed-by: <workflow id>`) is counted once, as that Agent in `free` |
+| `inFlight` | Machines on their way to this pool | Install runs currently running in Temporal on the pool's slots, `add-server-to-mce-<mce>_<infraEnv>_<slot>`. A run whose Agent already exists (labelled `redbull.io/installed-by: <run id>`, AD37) is counted once, as that Agent in `free` |
 
 - **Each claim is counted once,** in the pool whose InfraEnv's `agentLabels` satisfy its selector.
   A claim that no pool can satisfy is reported as unsatisfiable, naming its NodePool and selector.
@@ -117,7 +117,7 @@ install run builds the VM through its `create-vm` child and installs exactly tha
 
 | | |
 |---|---|
-| Read in-flight | Open runs on the pool's slots, `add-server-to-mce-<mce>_<infraEnv>_<slot>`, and the objects labelled with their workflow id |
+| Read in-flight | Open runs on the pool's slots, `add-server-to-mce-<mce>_<infraEnv>_<slot>`, and the objects labelled with their run ids (AD37) |
 | Order | `POST /workflows/server-lifecycle/add-server-to-mce` with `count`, carrying the pool's attributes |
 | Limits | At most 20 per call, at most 15 open per pool, 100 slots |
 
@@ -147,6 +147,12 @@ Every pass, the controller labels each Agent bound to a cluster (`spec.clusterDe
 - **Requires every NodePool to exclude the label** (`redbull.io/claimed DoesNotExist`). Wingman writes
   that exclusion into every NodePool (`DAY1_EXCLUDED_AGENT_LABELS`, Wingman#109); the
   hostedclusters-setup chart renders it.
+- **A label, so selectors see it.** A NodePool's `agentLabelSelector` reads labels only, so the mark is
+  a label rather than an annotation.
+- **Backfilled at rollout.** Every Agent bound at that moment is labelled before the NodePool exclusion is
+  turned on.
+- **One label for uninstalls too.** `redbull.io/claimed` replaces the earlier `redbull.io/uninstalling`,
+  since every machine being uninstalled was claimed first.
 
 ---
 
@@ -157,7 +163,7 @@ When a used Agent is free again, the controller removes its server from the MCE.
 | Rule | Detail |
 |---|---|
 | **When** | A used Agent that is unbound, not deleting, and unchanged for a grace period |
-| **How** | Start `remove-server-from-mce-<server>`: it powers the host off, deletes the BareMetalHost and NMStateConfig, deletes the Agent last and clears the PXE entry. The bare-metal server returns to server-scan for a full reinstall |
+| **How** | Start `remove-server-from-mce-<server>`: it deletes the BareMetalHost and NMStateConfig, so metal3 powers the host off, deletes the Agent last and clears the PXE entries. A bare-metal server returns to server-scan for a full reinstall; a VM is deleted as the last step (AD36, [procedure 22](procedures/22-delete-vm.md)) |
 | **Never deletes the Agent itself** | A host still running discovery would register again within a minute, as a fresh, unlabelled Agent |
 | **Never fights a run** | A server with an open uninstall, remove or named install run is skipped. The workflow id is the server, so a repeated start is a 409, never a second removal |
 | **Paced** | At most a set number of removals open per pool, so a deleted cluster does not start all its removals at once |
@@ -213,8 +219,6 @@ The collector's grace period and its limit of removals open per pool are set in 
 
 ## Open
 
-- **Destroying a VM after collection.** `remove-server-from-mce` takes the machine out of the MCE.
-  For a VM server, either it also deletes the VM, or the collector calls the VM delete as well.
 - **A claim that several pools can satisfy:** which pool the controller orders from, when a
   NodePool's selector matches more than one InfraEnv. How InfraEnvs are ranked is not decided.
 - **The spares per pool:** the starting number for each machine type.
