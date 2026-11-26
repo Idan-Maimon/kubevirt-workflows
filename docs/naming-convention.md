@@ -14,7 +14,7 @@ All names are lowercase (Kubernetes names must be).
 |---|---|---|
 | **Cluster** (tenant, MCE) | `ocp4-<lifecycle>-<flavor>-<site>-<id>` | `ocp4-prod-eck-five-a` |
 | **Cluster** (seed, KV) | `ocp4-<lifecycle>-<seed\|kv>-<site>-<zone>-<id>` | `ocp4-prod-seed-five-az1-a`<br>`ocp4-prod-kv-five-az1-a` |
-| **Node** (VM or bare metal) | `ocp-<flavor>-<mtl\|kv<cpu>>-<site>-<serial\|mac>` | `ocp-c200-mtl-five-fch2145v1ab`<br>`ocp-c200-kv32-five-02a1b2c3d4e5` |
+| **Node** (VM or bare metal) | `ocp-<flavor>-<mtl\|kv<cpu>>-<site>-<serial>` | `ocp-c200-mtl-five-fch2145v1ab`<br>`ocp-c200-kv32-five-k7q2m9xd` |
 | **InfraEnv** | `<flavor>-<mtl\|kv<cpu>>-<zone>` | `c200-mtl-az1`<br>`c200-mtl-az3`<br>`c200-kv32-az1` |
 | **Controller ConfigMap** | `<controller>-config`, where `<controller>` is the controller's name, in the controller's own namespace | `inventory-controller-config`<br>`kv-capacity-controller-config` |
 | **Capacity policy ConfigMap** | `capacity-policy`, on every Seed | `capacity-policy` |
@@ -27,7 +27,7 @@ All names are lowercase (Kubernetes names must be).
 | `site` | The physical site. Not in InfraEnv names: an InfraEnv belongs to one MCE, and so to that MCE's site |
 | `zone` | The availability zone. In InfraEnv, seed and KV cluster names; never in node, tenant cluster or MCE names (section 2) |
 | `id` | Cluster: a sequence letter, `a` to `z` |
-| `serial` or `mac` | Node: the server's serial number for bare metal; the VM's full MAC address, 12 hex digits without colons, for a VM |
+| `serial` | Node: the server's serial number for bare metal. For a VM, 8 random lowercase letters and digits, drawn by `create-vm` when it builds the VM and also written as the VM's SMBIOS serial (below) |
 
 ### Cluster flavors
 
@@ -48,7 +48,7 @@ and a KV cluster's file are told apart from an MCE's and a tenant's in day1.
 | `ocp-c200-mtl-five-fch2145v1ab` | Cisco bare metal (11-character serial) | 29 |
 | `ocp-c200n-mtl-five-fch2145v1ab` | Cisco bare metal, extra NIC | 30 |
 | `ocp-c200-mtl-five-7xk2m33` | Dell bare metal (7-character service tag) | 25 |
-| `ocp-c200-kv32-five-02a1b2c3d4e5` | VM, 32 vCPU | 31 |
+| `ocp-c200-kv32-five-k7q2m9xd` | VM, 32 vCPU (8-character serial) | 27 |
 
 ### Length
 
@@ -60,13 +60,28 @@ ocp- (4) + flavor with variant (5) + - + mtl (3) + - + <site> + - + serial (11) 
 
 With an 11-character Cisco serial, a site name can be at most 6 characters. The provisioning
 workflow checks the whole name's length before writing it to OME or UCS. VM names are not under
-the UCS limit; Kubernetes allows 63 characters.
+the UCS limit; Kubernetes allows 63 characters, and `create-vm` keeps a VM's name to 58 so that
+its root disk, `<name>-root`, fits too.
 
-### Why a VM carries its full MAC
+### Why a VM carries a serial, not its MAC
 
-Each KV cluster has its own MAC prefix. The last 6 hex digits alone can repeat across two KV
-clusters of one site, giving two VMs of the same flavor and size the same name. The full MAC is
-unique wherever MACs are, so the name is too.
+A VM is named before it exists, and its MAC is not known then: KubeMacPool assigns the MAC when
+the VirtualMachine is admitted, and `create-vm` never requests one. Requesting a MAC, so that the
+name could carry it, is not safe. KubeMacPool admits the same requested MAC on several VMs (tested
+on OpenShift Virtualization, 2026-11-25, inside and outside its range); it keeps unique only the
+MACs it assigns itself. A requested MAC would also need a MAC prefix configured for every KV
+cluster.
+
+So `create-vm` draws a **serial**: 8 random lowercase letters and digits. It is the last segment of
+the name and the VM's SMBIOS serial (`firmware.serial`), so the Agent's inventory reports the
+serial the name carries, as a bare-metal node's name carries its hardware serial.
+
+| Where | How the name stays unique |
+|---|---|
+| Within one KV cluster | Checked: a name that any VM of the cluster already has is drawn again |
+| Across the KV clusters of a site | By chance: 36^8 is about 2.8 trillion serials. For 10,000 VMs of one flavor and size at one site, the chance that any two share a serial is about 1 in 55,000 |
+
+A clash is never silent: the install fails on the BareMetalHost that already has the name.
 
 ### Flavor variants
 
@@ -193,13 +208,19 @@ spec:
 | **NodePool** | `redbull.io/inventory-managed: "true"` | The hostedclusters-setup chart, on every NodePool it renders | The Inventory Controller |
 | **Tenant Node** | `topology.kubernetes.io/zone` | The NodePool's `nodeLabels` | The tenant's scheduler: `topologySpreadConstraints` (AD7) |
 | **Customer MCE Node** | `topology.kubernetes.io/zone` | Per-zone kubelet node labels (a MachineConfig per zone), or labels set at install, from the KV cluster's zone | The MCE's scheduler: hosted control planes spread their etcd and API servers across zones, and the rule does nothing without this label |
+| **BareMetalHost of a VM** | `redbull.io/kv-cluster`, `redbull.io/created-by` | `add-server-to-mce`, when it installs the VM it had `create-vm` build (section 3, rule 3) | `remove-server-from-mce`: which KV cluster the VM is on, and which VM there, so the VM can be destroyed after its host is removed (section 5, rule 6) |
+
+**A VM's BareMetalHost says where its VM lives.** Nothing else on the MCE does: a VM's name carries
+no zone and no KV cluster, a zone may have several KV clusters, and a label on the VM is not
+copied to the MCE (above). Without the two labels, the run that removes the host would have to
+search every KV cluster of the site for a VM of that name. Their values are in section 4.b.
 
 ### 4.b Labels on KV cluster objects: hypervisors and VirtualMachines
 
 | Object | Labels | Set by | Read by |
 |---|---|---|---|
 | **KV hypervisor Node** | `topology.kubernetes.io/zone` (**required**) | The KV NodePool's `nodeLabels` | `create-vm`: the only place it learns which zone a KV cluster is in (below) |
-| **VirtualMachine** | `redbull.io/flavor`, `redbull.io/size`, `redbull.io/site`, `topology.kubernetes.io/zone`, `redbull.io/role`, `redbull.io/mce` | `create-vm`, or the procedure creating an MCE's VMs | Inventory and reporting; `role` and `mce` also by MCE VM anti-affinity |
+| **VirtualMachine** | `redbull.io/flavor`, `redbull.io/size`, `redbull.io/site`, `topology.kubernetes.io/zone`, `redbull.io/role`, `redbull.io/mce`, `redbull.io/kv-cluster`, `redbull.io/created-by` | `create-vm`, or the procedure creating an MCE's VMs; `kv-cluster` and `created-by` by `create-vm` only | Inventory and reporting; `role` and `mce` also by MCE VM anti-affinity; `created-by` also by every workflow that deletes a VM |
 
 **The zone label is required on every KV cluster's NodePools, and must equal the zone in the KV
 cluster's name.** `create-vm` reads a KV cluster's zone from the `topology.kubernetes.io/zone` its NodePools set in
@@ -231,6 +252,16 @@ Both are needed: anti-affinity between an MCE's own VMs selects `role=mce` **and
 With `mce` alone it would also keep MCE VMs away from every host running that MCE's tenant VMs,
 and could leave them unschedulable. A warm-pool VM carries no tenant-cluster label: the cluster is
 not known until it is claimed.
+
+**`redbull.io/kv-cluster` and `redbull.io/created-by`, on a VM and on its BareMetalHost:**
+
+| Label | Value | Reason |
+|---|---|---|
+| `redbull.io/kv-cluster` | The KV cluster's name, e.g. `ocp4-prod-kv-five-az1-a` | On the VM: an inventory gathered from many KV clusters says where each VM lives without keeping track of where each row was read. On the BareMetalHost: the only record on the MCE of where the VM lives (section 4.a) |
+| `redbull.io/created-by` | The Temporal run id of the `create-vm` run that built the VM | A VM's name is drawn inside the run, so nothing known beforehand identifies it. A retried create finds its own VM by this label instead of building a second one, and a delete removes only a VM that carries it, so a VM made by hand, or another run's VM of the same name, is never deleted. A run id, not a workflow id: a pool slot's workflow id is used again by later runs, and each of them owns a different VM |
+
+Neither is copied between the layers: `create-vm` writes them on the VM, and `add-server-to-mce`
+writes the same two values on the BareMetalHost when it installs that VM.
 
 ---
 
@@ -286,6 +317,6 @@ being uninstalled was claimed first.
 | 5 | The Inventory Controller's collection loop |
 | 6 | How Customer MCE Nodes get their zone label: kubelet node labels per zone, or labels at install |
 | 7 | Site names of at most 6 characters, or a shortened serial, so Cisco bare-metal names stay within 32 |
-| 8 | `create-vm` building VM names as `ocp-<flavor>-kv<cpu>-<site>-<full MAC>`; today it builds `ocp-<InfraEnv>-<6 hex>`, which would include the zone, leave out the site, and carry only half the MAC |
+| 8 | `create-vm` labelling a VM `redbull.io/kv-cluster`, and `add-server-to-mce` labelling a VM's BareMetalHost `redbull.io/kv-cluster` and `redbull.io/created-by` (section 4). The VM's name and its `redbull.io/created-by` label are already built this way |
 | 9 | `provision-cluster` or day1 CI refusing a KV cluster file whose NodePools do not all carry one identical zone label, equal to the zone in the cluster's name |
 | 10 | Updating architecture §9 to this convention once agreed |
