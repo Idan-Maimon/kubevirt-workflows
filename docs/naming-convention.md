@@ -1,8 +1,7 @@
 # Naming, zones and labels
 
-How clusters, nodes and InfraEnvs are named, how a server's zone is known, how a NodePool draws
-only the Agents of its zone, and how a machine that has served a cluster is kept out of the pool
-and collected.
+How clusters, nodes, InfraEnvs and ConfigMaps are named, how a server reaches the right zone, and which
+labels each object carries.
 
 ---
 
@@ -25,9 +24,9 @@ All names are lowercase (Kubernetes names must be).
 | `flavor` | Cluster: the cluster's flavor, or `mce`, `seed` or `kv` for an infrastructure cluster (below). Node and InfraEnv: the server configuration, with an optional variant letter (below) |
 | `mtl` or `kv<cpu>` | `mtl` for bare metal; `kv` plus the vCPU count for a VM, e.g. `kv32` |
 | `site` | The physical site. Not in InfraEnv names: an InfraEnv belongs to one MCE, and so to that MCE's site |
-| `zone` | The availability zone. In InfraEnv, seed and KV cluster names; never in node, tenant cluster or MCE names (section 2) |
+| `zone` | The availability zone. In InfraEnv, seed and KV cluster names; never in node, tenant cluster or MCE names |
 | `id` | Cluster: a sequence letter, `a` to `z` |
-| `serial` | Node: the server's serial number for bare metal. For a VM, 8 random lowercase letters and digits, drawn by `create-vm` when it builds the VM and also written as the VM's SMBIOS serial (below) |
+| `serial` | Node: the server's serial number for bare metal. For a VM, 8 random lowercase letters and digits, drawn by `create-vm` when it builds the VM and also written as the VM's SMBIOS serial |
 
 ### Cluster flavors
 
@@ -41,47 +40,14 @@ All names are lowercase (Kubernetes names must be).
 `mce`, `seed` and `kv` are reserved: no tenant flavor may use them. They are how a seed's folder
 and a KV cluster's file are told apart from an MCE's and a tenant's in day1.
 
-### Examples and lengths
+### Examples
 
-| Example | Machine | Length |
-|---|---|---|
-| `ocp-c200-mtl-five-fch2145v1ab` | Cisco bare metal (11-character serial) | 29 |
-| `ocp-c200n-mtl-five-fch2145v1ab` | Cisco bare metal, extra NIC | 30 |
-| `ocp-c200-mtl-five-7xk2m33` | Dell bare metal (7-character service tag) | 25 |
-| `ocp-c200-kv32-five-k7q2m9xd` | VM, 32 vCPU (8-character serial) | 27 |
-
-### Length
-
-**Bare-metal names must be at most 32 characters,** the limit Cisco UCS sets on a server's name:
-
-```
-ocp- (4) + flavor with variant (5) + - + mtl (3) + - + <site> + - + serial (11)  = 26 + site
-```
-
-With an 11-character Cisco serial, a site name can be at most 6 characters. The provisioning
-workflow checks the whole name's length before writing it to OME or UCS. VM names are not under
-the UCS limit; Kubernetes allows 63 characters, and `create-vm` keeps a VM's name to 58 so that
-its root disk, `<name>-root`, fits too.
-
-### Why a VM carries a serial, not its MAC
-
-A VM is named before it exists, and its MAC is not known then: KubeMacPool assigns the MAC when
-the VirtualMachine is admitted, and `create-vm` never requests one. Requesting a MAC, so that the
-name could carry it, is not safe. KubeMacPool admits the same requested MAC on several VMs (tested
-on OpenShift Virtualization, 2026-11-25, inside and outside its range); it keeps unique only the
-MACs it assigns itself. A requested MAC would also need a MAC prefix configured for every KV
-cluster.
-
-So `create-vm` draws a **serial**: 8 random lowercase letters and digits. It is the last segment of
-the name and the VM's SMBIOS serial (`firmware.serial`), so the Agent's inventory reports the
-serial the name carries, as a bare-metal node's name carries its hardware serial.
-
-| Where | How the name stays unique |
+| Example | Machine |
 |---|---|
-| Within one KV cluster | Checked: a name that any VM of the cluster already has is drawn again |
-| Across the KV clusters of a site | By chance: 36^8 is about 2.8 trillion serials. For 10,000 VMs of one flavor and size at one site, the chance that any two share a serial is about 1 in 55,000 |
-
-A clash is never silent: the install fails on the BareMetalHost that already has the name.
+| `ocp-c200-mtl-five-fch2145v1ab` | Cisco bare metal (11-character serial) |
+| `ocp-c200n-mtl-five-fch2145v1ab` | Cisco bare metal, extra NIC |
+| `ocp-c200-mtl-five-7xk2m33` | Dell bare metal (7-character service tag) |
+| `ocp-c200-kv32-five-k7q2m9xd` | VM, 32 vCPU (8-character serial) |
 
 ### Flavor variants
 
@@ -94,23 +60,7 @@ A clash is never silent: the install fails on the BareMetalHost that already has
 
 ---
 
-## 2. Zones
-
-**A server's zone is physical.** It comes from the Cisco ACI leaf the server is cabled to, and
-server-scan collects and stores it. server-scan is the zone's only source of truth.
-
-**The zone is not part of a node's name.** A name is fixed when the server is provisioned; a zone
-changes if the server is recabled to another leaf. server-scan picks up the new zone on its next
-collection, and nothing is renamed.
-
-| Machine | Where its zone comes from |
-|---|---|
-| Bare metal | server-scan, from the ACI leaf |
-| VM | Its KV cluster's zone. server-scan records it when it scans the KV clusters |
-
----
-
-## 3. How a server reaches the right zone
+## 2. How a server reaches the right zone
 
 ```
 ACI leaf -> server-scan: zone = az1
@@ -119,7 +69,7 @@ ACI leaf -> server-scan: zone = az1
 add-server-to-mce installs the server into InfraEnv c200-mtl-az1
              |
              v  the host boots that InfraEnv's discovery image
-Agent registers, labelled by the InfraEnv (section 4)
+Agent registers, labelled by the InfraEnv (section 3)
              |
              v
 the az1 NodePool selects Agents by those labels, and claims only az1 Agents
@@ -134,9 +84,10 @@ the az1 NodePool selects Agents by those labels, and claims only az1 Agents
 
 ---
 
-## 4. Labels
+## 3. Labels
 
-A VM appears as three objects at three layers, and a label on one is never copied to another:
+A VM appears as three objects at three layers, and each layer carries the labels its own workflow
+writes (rule 1, section 3.4):
 
 ```
 KV cluster
@@ -148,21 +99,61 @@ Tenant hosted cluster or Customer MCE
  └─ Node                                 <- the same VM, as a Node of the cluster it serves
 ```
 
-Section 4.a covers the labels on the MCE side, where Agents are claimed and Nodes are scheduled.
-Section 4.b covers the labels on the KV cluster's own objects.
+The section is a reference in four parts: 3.1 lists every label, 3.2 shows each object's labels,
+3.3 gives examples, and 3.4 states the rules.
 
-### 4.a Labels on MCE-side objects: Agents, NodePools and the Nodes they create
+### 3.1 The labels
 
-NodePools never read node names. They select Agents by label, and every Agent is labelled by the
-InfraEnv it registers from.
+<table border="1" cellpadding="6">
+<thead>
+<tr><th>Label</th><th>Value</th><th>On</th><th>Set by</th><th>Read by</th><th>Why</th></tr>
+</thead>
+<tbody>
+<tr><th colspan="6" align="left">Which machine</th></tr>
+<tr><td><code>redbull.io/flavor</code></td><td>The server configuration, e.g. <code>c200</code></td><td>Agent, VirtualMachine</td><td>The InfraEnv's <code>agentLabels</code>; <code>create-vm</code></td><td>NodePool selectors; <code>add-server-to-mce</code>'s draw</td><td>A NodePool names a server configuration explicitly: "c200 bare metal across all zones" is <code>flavor=c200, size=mtl</code>, where a name prefix would also sweep in other sizes and variants</td></tr>
+<tr><td><code>redbull.io/size</code></td><td><code>mtl</code> for bare metal, or <code>kv&lt;cpu&gt;</code> for a VM, e.g. <code>kv32</code></td><td>Agent, VirtualMachine</td><td>The InfraEnv's <code>agentLabels</code>; <code>create-vm</code></td><td>NodePool selectors; <code>add-server-to-mce</code>'s draw, and its choice between bare metal and a VM</td><td>As for <code>flavor</code></td></tr>
+<tr><td><code>redbull.io/site</code></td><td>The site, e.g. <code>five</code></td><td>Agent, VirtualMachine</td><td>The InfraEnv's <code>agentLabels</code>; <code>create-vm</code></td><td><code>add-server-to-mce</code>'s draw</td><td>The site is in no InfraEnv's name, because it is its MCE's, so the InfraEnv states it</td></tr>
+<tr><td><code>topology.kubernetes.io/zone</code></td><td>The zone, e.g. <code>az1</code></td><td>Agent; every Node (tenant, Customer MCE, KV hypervisor); VirtualMachine</td><td>The InfraEnv's <code>agentLabels</code>; a NodePool's <code>nodeLabels</code>; per-zone kubelet node labels on Customer MCE Nodes; <code>create-vm</code></td><td>NodePool selectors; schedulers (<code>topologySpreadConstraints</code>, AD7); <code>create-vm</code></td><td>Each zone's NodePool claims only its zone's Agents. Tenant workloads, and the hosted control planes on a Customer MCE, spread across zones. On KV hypervisors it is where <code>create-vm</code> learns a cluster's zone (rule 2)</td></tr>
+<tr><th colspan="6" align="left">Who may claim it</th></tr>
+<tr><td><code>redbull.io/claimed</code></td><td><code>"true"</code></td><td>Agent</td><td>The Inventory Controller, once the Agent is bound (R2 in <a href="inventory-controller.md">inventory-controller.md</a>)</td><td>Every NodePool's selector, as <code>DoesNotExist</code> (rule 3); the collector (R3)</td><td>An Agent that has served a cluster is claimed by no NodePool again, and is collected (AD34)</td></tr>
+<tr><td><code>redbull.io/inventory-managed</code></td><td><code>"true"</code></td><td>NodePool</td><td>The hostedclusters-setup chart, on every NodePool it renders</td><td>The Inventory Controller</td><td>The controller orders machines for the waiting workers of the NodePools carrying it</td></tr>
+<tr><th colspan="6" align="left">Who made it (AD37)</th></tr>
+<tr><td><code>redbull.io/installed-by</code></td><td>The run id of the <code>add-server-to-mce</code> run</td><td>BareMetalHost, NMStateConfig, BMC Secret</td><td><code>add-server-to-mce</code>, when it creates them</td><td>The Inventory Controller</td><td>An install run stays open after its Agent appears; matching the two counts the machine once</td></tr>
+<tr><td><code>redbull.io/created-by</code></td><td>The run id of the <code>create-vm</code> run</td><td>VirtualMachine; the VM's BareMetalHost</td><td><code>create-vm</code> on the VM; <code>add-server-to-mce</code> on the BareMetalHost of the VM it had <code>create-vm</code> build (section 2, rule 3)</td><td><code>create-vm</code>, to find its own VM on a retry; every workflow that deletes a VM (AD36)</td><td>A VM's name is drawn inside the run, so the run id is what identifies the VM. A delete removes only a VM carrying it, so a VM made by hand, or another run's VM of the same name, stays</td></tr>
+<tr><th colspan="6" align="left">Where a VM lives</th></tr>
+<tr><td><code>redbull.io/kv-cluster</code></td><td>The KV cluster's name, e.g. <code>ocp4-prod-kv-five-az1-a</code></td><td>VirtualMachine; the VM's BareMetalHost</td><td><code>create-vm</code> on the VM; <code>add-server-to-mce</code> on the BareMetalHost</td><td><code>remove-server-from-mce</code>, to delete the VM (AD36); inventory</td><td>On the VM: an inventory gathered from many KV clusters says where each VM lives. On the BareMetalHost: the MCE's one record of where the VM lives, since a VM's name carries no zone and no KV cluster, and a zone may hold several KV clusters</td></tr>
+<tr><th colspan="6" align="left">How a VM is reached</th></tr>
+<tr><td><code>redfish-enabled</code></td><td><code>"true"</code></td><td>VirtualMachine</td><td><code>create-vm</code></td><td>kubevirt-redfish, which exposes the VM as a Redfish system</td><td>Ironic installs and powers the VM through that system, as it does a server through its BMC, and server-scan lists the VM from it</td></tr>
+<tr><th colspan="6" align="left">Placement of VMs</th></tr>
+<tr><td><code>redbull.io/role</code></td><td><code>mce</code>: a master or worker MCE node; <code>worker</code>: a tenant warm-pool VM</td><td>VirtualMachine</td><td><code>create-vm</code>, or the procedure creating an MCE's VMs</td><td>MCE VM anti-affinity</td><td>Rule 5</td></tr>
+<tr><td><code>redbull.io/mce</code></td><td>The MCE's name: the MCE it is part of (<code>role=mce</code>), or the MCE whose InfraEnv it serves (<code>role=worker</code>)</td><td>VirtualMachine</td><td><code>create-vm</code>, or the procedure creating an MCE's VMs</td><td>MCE VM anti-affinity; reporting</td><td>Rule 5</td></tr>
+<tr><th colspan="6" align="left">Set by the platform</th></tr>
+<tr><td><code>infraenvs.agent-install.openshift.io</code></td><td>The InfraEnv's name</td><td>Agent; BareMetalHost and NMStateConfig</td><td>assisted-service on the Agent; <code>add-server-to-mce</code> on the BareMetalHost and NMStateConfig</td><td>assisted-service; the Inventory Controller, to tell which pool an Agent is in</td><td>It ties a host, its network config and its Agent to one InfraEnv</td></tr>
+</tbody>
+</table>
 
-#### InfraEnv: the labels its Agents receive
+### 3.2 By object
 
-assisted-service always stamps `infraenvs.agent-install.openshift.io: <InfraEnv name>`. Each InfraEnv
-also lists every part of its name, and its MCE's site, as an explicit label:
+<table border="1" cellpadding="6">
+<thead>
+<tr><th>Layer</th><th>Object</th><th>Labels</th></tr>
+</thead>
+<tbody>
+<tr><td>MCE</td><td>InfraEnv</td><td><code>agentLabels</code>: <code>redbull.io/flavor</code>, <code>redbull.io/size</code>, <code>redbull.io/site</code>, <code>topology.kubernetes.io/zone</code>, passed to its Agents</td></tr>
+<tr><td>MCE</td><td>Agent</td><td><code>redbull.io/flavor</code>, <code>redbull.io/size</code>, <code>redbull.io/site</code>, <code>topology.kubernetes.io/zone</code> from its InfraEnv; <code>infraenvs.agent-install.openshift.io</code>; <code>redbull.io/claimed</code> once bound</td></tr>
+<tr><td>MCE</td><td>NodePool</td><td><code>redbull.io/inventory-managed</code> on itself; it selects <code>redbull.io/flavor</code>, <code>redbull.io/size</code> and <code>topology.kubernetes.io/zone</code>, excluding <code>redbull.io/claimed</code>, and sets <code>topology.kubernetes.io/zone</code> on its Nodes</td></tr>
+<tr><td>MCE</td><td>BareMetalHost, NMStateConfig, BMC Secret</td><td><code>redbull.io/installed-by</code>; <code>infraenvs.agent-install.openshift.io</code> on the BareMetalHost and NMStateConfig; a VM's BareMetalHost also <code>redbull.io/kv-cluster</code> and <code>redbull.io/created-by</code></td></tr>
+<tr><td>Hosted cluster</td><td>Tenant Node</td><td><code>topology.kubernetes.io/zone</code>, from its NodePool's <code>nodeLabels</code></td></tr>
+<tr><td>Customer MCE</td><td>Customer MCE Node</td><td><code>topology.kubernetes.io/zone</code>, from per-zone kubelet node labels (a MachineConfig per zone) or labels set at install, taken from its KV cluster's zone</td></tr>
+<tr><td>KV cluster</td><td>KV hypervisor Node</td><td><code>topology.kubernetes.io/zone</code>, required, from the KV NodePool's <code>nodeLabels</code></td></tr>
+<tr><td>KV cluster</td><td>VirtualMachine</td><td><code>redbull.io/flavor</code>, <code>redbull.io/size</code>, <code>redbull.io/site</code>, <code>topology.kubernetes.io/zone</code>, <code>redbull.io/role</code>, <code>redbull.io/mce</code>, <code>redbull.io/kv-cluster</code>, <code>redbull.io/created-by</code>, <code>redfish-enabled</code></td></tr>
+</tbody>
+</table>
+
+### 3.3 Examples
 
 ```yaml
-# InfraEnv c200-mtl-az1
+# InfraEnv c200-mtl-az1. assisted-service also stamps infraenvs.agent-install.openshift.io on its Agents
 spec:
   agentLabels:
     redbull.io/flavor: c200
@@ -170,8 +161,6 @@ spec:
     redbull.io/site: five
     topology.kubernetes.io/zone: az1
 ```
-
-#### NodePool: what it selects, and what its Nodes carry
 
 ```yaml
 # NodePool of a cluster, for az1
@@ -192,41 +181,6 @@ spec:
     topology.kubernetes.io/zone: az1
 ```
 
-| Label | Reason |
-|---|---|
-| `redbull.io/flavor`, `redbull.io/size` | A NodePool selects a server configuration and size explicitly. "c200 bare metal across all zones" is `flavor=c200, size=mtl`, not a name prefix, which would also sweep in other sizes and variants |
-| `topology.kubernetes.io/zone` on the Agent | Each zone's NodePool claims only Agents of its zone |
-| `topology.kubernetes.io/zone` on the Node (`nodeLabels`) | Tenant workloads spread across zones with `topologySpreadConstraints` (AD7) |
-| `redbull.io/claimed DoesNotExist` | An Agent that has ever served a cluster is never claimed again by any NodePool (section 5). Adding it changes the NodePool's template hash, so confirm the NodePool is `InPlace` before rollout |
-| `redbull.io/inventory-managed: "true"` on the NodePool | The Inventory Controller watches the NodePools carrying it, and orders machines for their waiting workers (`docs/inventory-controller.md`). Set by the hostedclusters-setup chart on every NodePool it renders |
-
-#### Where each label lives, MCE side
-
-| Object | Labels | Set by | Read by |
-|---|---|---|---|
-| **Agent** | `redbull.io/flavor`, `redbull.io/size`, `redbull.io/site`, `topology.kubernetes.io/zone`, `redbull.io/claimed` | The InfraEnv's `agentLabels`; `claimed` by the Inventory Controller (section 5) | NodePool selectors |
-| **NodePool** | `redbull.io/inventory-managed: "true"` | The hostedclusters-setup chart, on every NodePool it renders | The Inventory Controller |
-| **Tenant Node** | `topology.kubernetes.io/zone` | The NodePool's `nodeLabels` | The tenant's scheduler: `topologySpreadConstraints` (AD7) |
-| **Customer MCE Node** | `topology.kubernetes.io/zone` | Per-zone kubelet node labels (a MachineConfig per zone), or labels set at install, from the KV cluster's zone | The MCE's scheduler: hosted control planes spread their etcd and API servers across zones, and the rule does nothing without this label |
-| **BareMetalHost of a VM** | `redbull.io/kv-cluster`, `redbull.io/created-by` | `add-server-to-mce`, when it installs the VM it had `create-vm` build (section 3, rule 3) | `remove-server-from-mce`: which KV cluster the VM is on, and which VM there, so the VM can be destroyed after its host is removed (section 5, rule 6) |
-
-**A VM's BareMetalHost says where its VM lives.** Nothing else on the MCE does: a VM's name carries
-no zone and no KV cluster, a zone may have several KV clusters, and a label on the VM is not
-copied to the MCE (above). Without the two labels, the run that removes the host would have to
-search every KV cluster of the site for a VM of that name. Their values are in section 4.b.
-
-### 4.b Labels on KV cluster objects: hypervisors and VirtualMachines
-
-| Object | Labels | Set by | Read by |
-|---|---|---|---|
-| **KV hypervisor Node** | `topology.kubernetes.io/zone` (**required**) | The KV NodePool's `nodeLabels` | `create-vm`: the only place it learns which zone a KV cluster is in (below) |
-| **VirtualMachine** | `redbull.io/flavor`, `redbull.io/size`, `redbull.io/site`, `topology.kubernetes.io/zone`, `redbull.io/role`, `redbull.io/mce`, `redbull.io/kv-cluster`, `redbull.io/created-by` | `create-vm`, or the procedure creating an MCE's VMs; `kv-cluster` and `created-by` by `create-vm` only | Inventory and reporting; `role` and `mce` also by MCE VM anti-affinity; `created-by` also by every workflow that deletes a VM |
-
-**The zone label is required on every KV cluster's NodePools, and must equal the zone in the KV
-cluster's name.** `create-vm` reads a KV cluster's zone from the `topology.kubernetes.io/zone` its NodePools set in
-`nodeLabels`, in the cluster's day1 file. A KV cluster is single-zone (AD8), so every NodePool of the
-file names the same zone:
-
 ```yaml
 # sites/five/mces/ocp4-prod-seed-five-az1-a/hostedClusters/ocp4-prod-kv-five-az1-a.yaml
 nodepool:
@@ -236,87 +190,65 @@ nodepool:
     topology.kubernetes.io/zone: az1
 ```
 
-A KV cluster file whose NodePools name no zone, or two different zones, is never offered to
-placement: its capacity silently does not exist for `create-vm`. So the file is **refused when it
-is written**, by `provision-cluster` or day1 CI, unless every NodePool carries exactly one, identical
-zone, equal to the zone in the cluster's name.
+```yaml
+# VirtualMachine ocp-c200-kv32-five-k7q2m9xd, on KV cluster ocp4-prod-kv-five-az1-a
+metadata:
+  labels:
+    redbull.io/flavor: c200
+    redbull.io/size: kv32
+    redbull.io/site: five
+    topology.kubernetes.io/zone: az1
+    redbull.io/role: worker
+    redbull.io/mce: ocp4-prod-mce-five-a
+    redbull.io/kv-cluster: ocp4-prod-kv-five-az1-a
+    redbull.io/created-by: <the create-vm run id>
+    redfish-enabled: "true"
+```
 
-**`redbull.io/role` and `redbull.io/mce` on VMs:**
+```yaml
+# BareMetalHost of that VM, on MCE ocp4-prod-mce-five-a
+metadata:
+  labels:
+    infraenvs.agent-install.openshift.io: c200-kv32-az1
+    redbull.io/installed-by: <the add-server-to-mce run id>
+    redbull.io/kv-cluster: ocp4-prod-kv-five-az1-a
+    redbull.io/created-by: <the create-vm run id>
+```
 
-| Label | Values |
-|---|---|
-| `redbull.io/role` | `mce`: A master or worker mce node. `worker`: a tenant warm-pool VM |
-| `redbull.io/mce` | The MCE's name: the MCE it is part of (`role=mce`), or the MCE whose InfraEnv it serves (`role=worker`) |
+### 3.4 Rules
 
-Both are needed: anti-affinity between an MCE's own VMs selects `role=mce` **and** `mce=<name>`.
-With `mce` alone it would also keep MCE VMs away from every host running that MCE's tenant VMs,
-and could leave them unschedulable. A warm-pool VM carries no tenant-cluster label: the cluster is
-not known until it is claimed.
-
-**`redbull.io/kv-cluster` and `redbull.io/created-by`, on a VM and on its BareMetalHost:**
-
-| Label | Value | Reason |
-|---|---|---|
-| `redbull.io/kv-cluster` | The KV cluster's name, e.g. `ocp4-prod-kv-five-az1-a` | On the VM: an inventory gathered from many KV clusters says where each VM lives without keeping track of where each row was read. On the BareMetalHost: the only record on the MCE of where the VM lives (section 4.a) |
-| `redbull.io/created-by` | The Temporal run id of the `create-vm` run that built the VM | A VM's name is drawn inside the run, so nothing known beforehand identifies it. A retried create finds its own VM by this label instead of building a second one, and a delete removes only a VM that carries it, so a VM made by hand, or another run's VM of the same name, is never deleted. A run id, not a workflow id: a pool slot's workflow id is used again by later runs, and each of them owns a different VM |
-
-Neither is copied between the layers: `create-vm` writes them on the VM, and `add-server-to-mce`
-writes the same two values on the BareMetalHost when it installs that VM.
+1. **Each layer carries the labels its own workflow writes.** A VM's labels stay on the VM; its
+   Agent takes its InfraEnv's labels, and its Node its NodePool's. `redbull.io/kv-cluster` and
+   `redbull.io/created-by` sit on both the VM and its BareMetalHost because each layer's workflow
+   writes them: `create-vm` on the VM, and `add-server-to-mce` on the BareMetalHost when it
+   installs that VM.
+2. **One zone per KV cluster file.** Every NodePool of a KV cluster carries
+   `topology.kubernetes.io/zone` in its `nodeLabels`, the same on all of them and equal to the zone
+   in the cluster's name, since a KV cluster is single-zone (AD8). `create-vm` reads a KV cluster's
+   zone from there, so a file naming no zone, or two zones, would leave the cluster's capacity
+   outside placement. `provision-cluster` or day1 CI refuses such a file when it is written.
+3. **Every NodePool excludes `redbull.io/claimed`** (`DoesNotExist`), so an Agent that has served
+   a cluster is claimed by no NodePool again (R2 and R3 in
+   [inventory-controller.md](inventory-controller.md)). Adding the exclusion changes the
+   NodePool's template hash, so the NodePool is confirmed `InPlace` before rollout.
+4. **NodePools select by label.** Every Agent is labelled by the InfraEnv it registers from, so a
+   NodePool reads labels and no node names.
+5. **MCE VM anti-affinity selects `redbull.io/role=mce` and `redbull.io/mce=<name>` together.**
+   With `mce` alone it would also keep an MCE's VMs away from every host running that MCE's tenant
+   VMs, and could leave them unschedulable. A warm-pool VM carries no tenant-cluster label: its
+   cluster is known only once it is claimed.
+6. **A label naming a run carries the run id** (AD37). A pool slot's workflow id is used again by
+   later runs, and each of them makes a different machine.
 
 ---
 
-## 5. Claimed Agents and garbage collection
-
-A machine that has served a cluster is never reused as it is (AD23). Instead of each workflow
-releasing the machines it frees, **the Inventory Controller marks every Agent bound to a cluster,
-and collects marked Agents once they are free.**
-
-```
-Agent bound to a cluster  ->  label redbull.io/claimed=true  (by the Inventory Controller)
-             |
-             v  the machine leaves the cluster, by any path
-Agent free again, still labelled  ->  no NodePool can claim it (selector, section 4)
-             |
-             v
-Inventory Controller: claimed + unbound  ->  remove-server-from-mce, then destroy a VM
-```
-
-| # | Rule | Owner |
-|---|---|---|
-| 1 | **A label, not an annotation.** A NodePool's `agentLabelSelector` selects labels only | — |
-| 2 | **Marked by the Inventory Controller** on every pass: each Agent bound to a cluster (`spec.clusterDeploymentName` set) gets the label. Labelling a bound Agent is safe, and the mark stays until the Agent is deleted | Inventory Controller |
-| 3 | **A missed label is caught:** an Agent showing evidence of an unbind (the `Unbinding` condition reason, the `unbinding` or `reclaiming` states, or `status.deprovision_info`) is treated as used, with or without the label | Inventory Controller |
-| 4 | **Every NodePool excludes the label** (`redbull.io/claimed DoesNotExist`). The provider applies the selector only when it picks a free Agent, so a bound Agent's running node is not affected | hostedclusters-setup chart |
-| 5 | **Collect:** Agents labelled `claimed`, unbound (no `clusterDeploymentName`, no AgentMachine), not deleting, unchanged for a grace period | Inventory Controller |
-| 6 | **Act through a workflow:** start `remove-server-from-mce-<server>`, then destroy a VM; bare metal returns to server-scan for reinstall. The id is the server, so a repeat, or `uninstall-server-from-hc`'s own child, is a 409, not a duplicate | Inventory Controller |
-| 7 | **Bounded parallelism,** so a deleted cluster does not start all its removals at once | Inventory Controller |
-| 8 | **Marked free Agents are not spare.** The Inventory Controller does not count them as claimable, so it does not under-order while they wait | Inventory Controller |
-| 9 | **Backfill at rollout:** label every currently bound Agent before turning on the NodePool exclusion | Rollout |
-
-**What this covers:** every path that frees a machine: a scale-down, CAPI choosing another
-Machine, a repair replacing a node, `uninstall-server-from-hc`, a deleted cluster.
-
-**What it simplifies:** `update-nodepool` no longer releases machines. A scale-down marks the
-Machine only when the customer picked it, commits the count, syncs, and checks the deleting set.
-
-**In the architecture:** AD34.
-
-**One label instead of two:** `claimed` replaces `redbull.io/uninstalling`, since every machine
-being uninstalled was claimed first.
-
----
-
-## 6. Open items
+## 4. Open items
 
 | # | Item |
 |---|---|
 | 1 | Definition of variant `x` |
 | 2 | Whether server-scan's availability query can already filter by zone |
 | 3 | The hostedclusters-setup chart rendering `agentLabels`, the selector and `nodeLabels` |
-| 4 | The Inventory Controller labelling bound Agents |
-| 5 | The Inventory Controller's collection loop |
-| 6 | How Customer MCE Nodes get their zone label: kubelet node labels per zone, or labels at install |
-| 7 | Site names of at most 6 characters, or a shortened serial, so Cisco bare-metal names stay within 32 |
-| 8 | `create-vm` labelling a VM `redbull.io/kv-cluster`, and `add-server-to-mce` labelling a VM's BareMetalHost `redbull.io/kv-cluster` and `redbull.io/created-by` (section 4). The VM's name and its `redbull.io/created-by` label are already built this way |
-| 9 | `provision-cluster` or day1 CI refusing a KV cluster file whose NodePools do not all carry one identical zone label, equal to the zone in the cluster's name |
-| 10 | Updating architecture §9 to this convention once agreed |
+| 4 | How Customer MCE Nodes get their zone label: kubelet node labels per zone, or labels at install |
+| 5 | `create-vm` labelling a VM `redbull.io/kv-cluster`, and `add-server-to-mce` labelling a VM's BareMetalHost `redbull.io/kv-cluster` and `redbull.io/created-by` (section 3). The VM's name and its `redbull.io/created-by` label are already built this way |
+| 6 | `provision-cluster` or day1 CI refusing a KV cluster file whose NodePools do not all carry one identical zone label, equal to the zone in the cluster's name |
