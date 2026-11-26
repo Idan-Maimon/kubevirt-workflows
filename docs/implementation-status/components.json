@@ -1,6 +1,6 @@
 {
   "title": "OCP KubeVirt platform: build status",
-  "updated": "2026-11-25",
+  "updated": "2026-11-26",
   "statuses": {
     "done": {
       "label": "Done"
@@ -52,21 +52,21 @@
           "name": "add-server-to-mce",
           "owner": "team-redbull/workflows",
           "status": "partial",
-          "note": "Bare metal done. Not yet: the create-vm child for VM pools (AD29), and the draw built from the MCE's site and the zone filter under the new InfraEnv names.",
+          "note": "Bare metal done; the draw comes from the InfraEnv's agentLabels. Not yet: the create-vm child for VM pools (AD29), the zone in the draw, and the installed-by and VM labels on its objects (AD37).",
           "link": "https://github.com/team-redbull/workflows"
         },
         {
           "name": "remove-server-from-mce",
           "owner": "team-redbull/workflows",
-          "status": "done",
-          "note": "Power off, BareMetalHost, NMStateConfig, Agent, PXE map.",
+          "status": "partial",
+          "note": "BareMetalHost and NMStateConfig deleted, metal3 powering the host off; Agent; PXE entries. Not yet: deleting a VM server's VM as its last step (AD36).",
           "link": "https://github.com/team-redbull/workflows"
         },
         {
           "name": "uninstall-server-from-hc",
           "owner": "team-redbull/workflows",
           "status": "done",
-          "note": "Takes a node out of its hosted cluster; ends at a free Agent.",
+          "note": "Takes a node out of its hosted cluster, then removes the server from the MCE through its remove-server-from-mce child.",
           "link": "https://github.com/team-redbull/workflows"
         },
         {
@@ -101,22 +101,29 @@
           "name": "update-nodepool",
           "owner": "team-redbull/workflows",
           "status": "partial",
-          "note": "On branch feat/update-nodepool, not merged. Assessment findings open (release per AD23, named node, floor).",
-          "link": "https://github.com/team-redbull/workflows/tree/feat/update-nodepool"
+          "note": "Merged to main: sets a NodePool's replicas; a scale-down marks the Machines that leave, by name or by policy. Not yet: creating a missing NodePool, for the KV Capacity Controller's standby.",
+          "link": "https://github.com/team-redbull/workflows/blob/main/workflow_domains/server_lifecycle/update_nodepool.py"
         },
         {
           "name": "create-vm",
           "owner": "team-redbull/workflows",
           "status": "partial",
-          "note": "Redesign in review (workflows#26): a worker in each KV cluster and a zone lock. The deployed version cannot succeed: no agents.",
-          "link": "https://github.com/team-redbull/workflows/pull/26"
+          "note": "On main, its deployment still to be confirmed: the zone lock, the oldest KV cluster that fits, a worker in each KV cluster, serial names, KubeMacPool's MAC, a failed create moving on. Not yet: started as add-server-to-mce's child (AD29), and the kv-cluster label.",
+          "link": "https://github.com/team-redbull/workflows/blob/main/workflow_domains/vm_lifecycle/create_vm.py"
         },
         {
           "name": "KV zone lock",
           "owner": "team-redbull/workflows",
-          "status": "todo",
-          "note": "One placement at a time per zone (AD32). In the create-vm design.",
-          "link": "https://github.com/team-redbull/workflows/pull/26"
+          "status": "partial",
+          "note": "On main: one create-vm run at a time chooses a KV cluster in a zone (AD32). Its deployment is still to be confirmed.",
+          "link": "https://github.com/team-redbull/workflows/blob/main/workflow_domains/vm_lifecycle/kv_zone_lock.py"
+        },
+        {
+          "name": "delete-stray-vm",
+          "owner": "team-redbull/workflows",
+          "status": "partial",
+          "note": "On main: removes a VM that a create-vm run left on a cluster it moved on from, by its run-id label. Its deployment is still to be confirmed.",
+          "link": "https://github.com/team-redbull/workflows/blob/main/workflow_domains/vm_lifecycle/delete_stray_vm.py"
         },
         {
           "name": "upgrade-cluster",
@@ -170,7 +177,7 @@
           "name": "Capacity policy file",
           "owner": "platform repo",
           "status": "todo",
-          "note": "AD31: maxNodes, freeCpuPercent, standby sizes, read by placement and the KV Capacity Controller alike."
+          "note": "AD31: the ConfigMap capacity-policy, with maxNodes, freeCpuPercent, growAtCpuPercent, standbyWorkers and standbyClusters, read by placement and the KV Capacity Controller."
         }
       ]
     },
@@ -195,7 +202,7 @@
           "name": "Seed clusters",
           "owner": "platform",
           "status": "todo",
-          "note": "One bare-metal seed per zone (AD17). Its day1 folders do not exist yet."
+          "note": "At least one bare-metal seed per zone (AD17). Its day1 folders do not exist yet."
         },
         {
           "name": "KV clusters",
@@ -206,9 +213,9 @@
         {
           "name": "vm-lifecycle-worker",
           "owner": "team-redbull/workflows",
-          "status": "todo",
-          "note": "One per KV cluster: reports capacity and builds VMs, with its ConfigMap (cluster, site, VLAN, MAC prefix).",
-          "link": "https://github.com/team-redbull/workflows/pull/26"
+          "status": "partial",
+          "note": "On main: a worker inside each KV cluster, on that cluster's own queue, reads its figures and creates and deletes VMs. KubeMacPool assigns MACs, so its chart is the same on every KV cluster. Its deployment is still to be confirmed.",
+          "link": "https://github.com/team-redbull/workflows/tree/main/activities/vm_lifecycle"
         },
         {
           "name": "kubevirt-redfish",
@@ -295,7 +302,7 @@
           "name": "KV Capacity Controller",
           "owner": "Seed",
           "status": "todo",
-          "note": "AD27/AD28/AD35: grows the active KV cluster, keeps a standby. Specification only.",
+          "note": "AD27, AD28, AD35: grows each KV NodePool from 70% requested CPU, up to 40 nodes a cluster, and keeps an empty standby. Specification only.",
           "link": "https://github.com/Idan-Maimon/kubevirt-workflows/blob/main/docs/kv-capacity-controller.md"
         }
       ]

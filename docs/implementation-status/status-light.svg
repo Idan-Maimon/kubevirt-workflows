@@ -1,6 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 1250" width="1200" height="1250" class="t viz light" style="--page:#f9f9f7;--band:#f1f0ec;--card:#ffffff;--ink:#0b0b0b;--ink2:#52514e;--muted:#898781;--hair:rgba(11,11,11,0.10);--track:#e1e0d9;--good:#0ca30c;--warn:#fab219;--todo:#898781" role="img" aria-labelledby="t d">
 <title id="t">OCP KubeVirt platform: build status</title>
-<desc id="d">15 done, 10 partial, 9 not started, of 34 components, as of 2026-11-25.</desc>
+<desc id="d">14 done, 14 partial, 7 not started, of 35 components, as of 2026-11-26.</desc>
 <style>
 .t{font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
 .title{font-size:24px;font-weight:650;fill:var(--ink)}
@@ -31,19 +31,19 @@
 <defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,1 L9,5 L0,9 Z" fill="var(--muted)"/></marker></defs>
 <rect width="1200" height="1250" fill="var(--page)"/>
 <text class="title" x="24" y="50">OCP KubeVirt platform: build status</text>
-<text class="sub" x="24" y="76">Status as of 2026-11-25 · 34 components</text>
+<text class="sub" x="24" y="76">Status as of 2026-11-26 · 35 components</text>
 <g class="s-done"><circle cx="33" cy="106" r="9" fill="var(--good)"/><path d="M29.2,106.2 L31.9,109 L37,103.2" fill="none" stroke="#ffffff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><text class="tile-l" x="48" y="110">Done</text></g>
 <g class="s-partial"><circle class="pulse" cx="94.6" cy="106" r="8"/><circle cx="94.6" cy="106" r="8" fill="var(--card)" stroke="var(--warn)" stroke-width="2"/><path d="M94.6,98 A8,8 0 0 1 94.6,114 Z" fill="var(--warn)"/><text class="tile-l" x="109.6" y="110">In progress</text></g>
 <g class="s-todo"><circle cx="204.5" cy="106" r="7.5" fill="none" stroke="var(--todo)" stroke-width="1.6" stroke-dasharray="2.6 2.4"/><text class="tile-l" x="219.5" y="110">Not started</text></g>
 <g class="s-external"><circle cx="314.4" cy="106" r="7.5" fill="none" stroke="var(--muted)" stroke-width="1.6"/><circle cx="314.4" cy="106" r="2.2" fill="var(--muted)"/><text class="tile-l" x="329.4" y="110">External</text></g>
 <text class="small" x="24" y="138">Arrows show who drives whom. A pulsing marker is work in progress.</text>
-<g class="s-done"><circle cx="790" cy="44" r="9" fill="var(--good)"/><path d="M786.2,44.2 L788.9,47 L794,41.2" fill="none" stroke="#ffffff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><text class="tile-l" x="806" y="48">Done</text><text class="tile-v" x="780" y="86">15</text></g>
-<g class="s-partial"><circle class="pulse" cx="922" cy="44" r="8"/><circle cx="922" cy="44" r="8" fill="var(--card)" stroke="var(--warn)" stroke-width="2"/><path d="M922,36 A8,8 0 0 1 922,52 Z" fill="var(--warn)"/><text class="tile-l" x="938" y="48">In progress</text><text class="tile-v" x="912" y="86">10</text></g>
-<g class="s-todo"><circle cx="1054" cy="44" r="7.5" fill="none" stroke="var(--todo)" stroke-width="1.6" stroke-dasharray="2.6 2.4"/><text class="tile-l" x="1070" y="48">Not started</text><text class="tile-v" x="1044" y="86">9</text></g>
-<rect class="grow" x="780.0" y="104" width="169.4" height="8" rx="4" fill="var(--good)"/>
-<rect class="grow" x="951.4" y="104" width="112.9" height="8" rx="4" fill="var(--warn)"/>
-<rect class="grow" x="1066.4" y="104" width="101.6" height="8" rx="4" fill="var(--track)"/>
-<text class="small" x="780" y="132">44% done · 15 of 34</text>
+<g class="s-done"><circle cx="790" cy="44" r="9" fill="var(--good)"/><path d="M786.2,44.2 L788.9,47 L794,41.2" fill="none" stroke="#ffffff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/><text class="tile-l" x="806" y="48">Done</text><text class="tile-v" x="780" y="86">14</text></g>
+<g class="s-partial"><circle class="pulse" cx="922" cy="44" r="8"/><circle cx="922" cy="44" r="8" fill="var(--card)" stroke="var(--warn)" stroke-width="2"/><path d="M922,36 A8,8 0 0 1 922,52 Z" fill="var(--warn)"/><text class="tile-l" x="938" y="48">In progress</text><text class="tile-v" x="912" y="86">14</text></g>
+<g class="s-todo"><circle cx="1054" cy="44" r="7.5" fill="none" stroke="var(--todo)" stroke-width="1.6" stroke-dasharray="2.6 2.4"/><text class="tile-l" x="1070" y="48">Not started</text><text class="tile-v" x="1044" y="86">7</text></g>
+<rect class="grow" x="780.0" y="104" width="153.6" height="8" rx="4" fill="var(--good)"/>
+<rect class="grow" x="935.6" y="104" width="153.6" height="8" rx="4" fill="var(--warn)"/>
+<rect class="grow" x="1091.2" y="104" width="76.8" height="8" rx="4" fill="var(--track)"/>
+<text class="small" x="780" y="132">40% done · 14 of 35</text>
 <rect class="band" x="24" y="164" width="1060" height="86" rx="12"/>
 <text class="lane-title" x="40" y="192">People &amp; portal</text>
 <text class="lane-sub" x="40" y="210">Self-service and</text>
@@ -81,25 +81,25 @@ The brain, the per-domain workers and the trigger API.</title>
 </g>
 <g class="chip s-partial">
 <title>add-server-to-mce · In progress
-Bare metal done. Not yet: the create-vm child for VM pools (AD29), and the draw built from the MCE&#x27;s site and the zone filter under the new InfraEnv names.</title>
+Bare metal done; the draw comes from the InfraEnv&#x27;s agentLabels. Not yet: the create-vm child for VM pools (AD29), the zone in the draw, and the installed-by and VM labels on its objects (AD37).</title>
 <rect class="card" x="401.5" y="296" width="215.5" height="54" rx="9"/>
 <rect class="accent" x="401.5" y="306" width="3" height="34" rx="1.5"/>
 <circle class="pulse" cx="423.5" cy="323.0" r="8"/><circle cx="423.5" cy="323.0" r="8" fill="var(--card)" stroke="var(--warn)" stroke-width="2"/><path d="M423.5,315.0 A8,8 0 0 1 423.5,331.0 Z" fill="var(--warn)"/>
 <text class="name" x="441.5" y="319">add-server-to-mce</text>
 <text class="owner" x="441.5" y="336">workflows</text>
 </g>
-<g class="chip s-done">
-<title>remove-server-from-mce · Done
-Power off, BareMetalHost, NMStateConfig, Agent, PXE map.</title>
+<g class="chip s-partial">
+<title>remove-server-from-mce · In progress
+BareMetalHost and NMStateConfig deleted, metal3 powering the host off; Agent; PXE entries. Not yet: deleting a VM server&#x27;s VM as its last step (AD36).</title>
 <rect class="card" x="629.0" y="296" width="215.5" height="54" rx="9"/>
 <rect class="accent" x="629.0" y="306" width="3" height="34" rx="1.5"/>
-<circle cx="651.0" cy="323.0" r="9" fill="var(--good)"/><path d="M647.2,323.2 L649.9,326.0 L655.0,320.2" fill="none" stroke="#ffffff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+<circle class="pulse" cx="651.0" cy="323.0" r="8"/><circle cx="651.0" cy="323.0" r="8" fill="var(--card)" stroke="var(--warn)" stroke-width="2"/><path d="M651.0,315.0 A8,8 0 0 1 651.0,331.0 Z" fill="var(--warn)"/>
 <text class="name" x="669.0" y="319">remove-server-from-mce</text>
 <text class="owner" x="669.0" y="336">workflows</text>
 </g>
 <g class="chip s-done">
 <title>uninstall-server-from-hc · Done
-Takes a node out of its hosted cluster; ends at a free Agent.</title>
+Takes a node out of its hosted cluster, then removes the server from the MCE through its remove-server-from-mce child.</title>
 <rect class="card" x="856.5" y="296" width="215.5" height="54" rx="9"/>
 <rect class="accent" x="856.5" y="306" width="3" height="34" rx="1.5"/>
 <circle cx="878.5" cy="323.0" r="9" fill="var(--good)"/><path d="M874.7,323.2 L877.4,326.0 L882.5,320.2" fill="none" stroke="#ffffff" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
@@ -144,7 +144,7 @@ On main; its worker chart is not yet deployed, and Wingman&#x27;s switch to it i
 </g>
 <g class="chip s-partial">
 <title>update-nodepool · In progress
-On branch feat/update-nodepool, not merged. Assessment findings open (release per AD23, named node, floor).</title>
+Merged to main: sets a NodePool&#x27;s replicas; a scale-down marks the Machines that leave, by name or by policy. Not yet: creating a missing NodePool, for the KV Capacity Controller&#x27;s standby.</title>
 <rect class="card" x="174.0" y="424" width="215.5" height="54" rx="9"/>
 <rect class="accent" x="174.0" y="434" width="3" height="34" rx="1.5"/>
 <circle class="pulse" cx="196.0" cy="451.0" r="8"/><circle cx="196.0" cy="451.0" r="8" fill="var(--card)" stroke="var(--warn)" stroke-width="2"/><path d="M196.0,443.0 A8,8 0 0 1 196.0,459.0 Z" fill="var(--warn)"/>
@@ -153,39 +153,48 @@ On branch feat/update-nodepool, not merged. Assessment findings open (release pe
 </g>
 <g class="chip s-partial">
 <title>create-vm · In progress
-Redesign in review (workflows#26): a worker in each KV cluster and a zone lock. The deployed version cannot succeed: no agents.</title>
+On main, its deployment still to be confirmed: the zone lock, the oldest KV cluster that fits, a worker in each KV cluster, serial names, KubeMacPool&#x27;s MAC, a failed create moving on. Not yet: started as add-server-to-mce&#x27;s child (AD29), and the kv-cluster label.</title>
 <rect class="card" x="401.5" y="424" width="215.5" height="54" rx="9"/>
 <rect class="accent" x="401.5" y="434" width="3" height="34" rx="1.5"/>
 <circle class="pulse" cx="423.5" cy="451.0" r="8"/><circle cx="423.5" cy="451.0" r="8" fill="var(--card)" stroke="var(--warn)" stroke-width="2"/><path d="M423.5,443.0 A8,8 0 0 1 423.5,459.0 Z" fill="var(--warn)"/>
 <text class="name" x="441.5" y="447">create-vm</text>
 <text class="owner" x="441.5" y="464">workflows</text>
 </g>
-<g class="chip s-todo">
-<title>KV zone lock · Not started
-One placement at a time per zone (AD32). In the create-vm design.</title>
+<g class="chip s-partial">
+<title>KV zone lock · In progress
+On main: one create-vm run at a time chooses a KV cluster in a zone (AD32). Its deployment is still to be confirmed.</title>
 <rect class="card" x="629.0" y="424" width="215.5" height="54" rx="9"/>
 <rect class="accent" x="629.0" y="434" width="3" height="34" rx="1.5"/>
-<circle cx="651.0" cy="451.0" r="7.5" fill="none" stroke="var(--todo)" stroke-width="1.6" stroke-dasharray="2.6 2.4"/>
+<circle class="pulse" cx="651.0" cy="451.0" r="8"/><circle cx="651.0" cy="451.0" r="8" fill="var(--card)" stroke="var(--warn)" stroke-width="2"/><path d="M651.0,443.0 A8,8 0 0 1 651.0,459.0 Z" fill="var(--warn)"/>
 <text class="name" x="669.0" y="447">KV zone lock</text>
 <text class="owner" x="669.0" y="464">workflows</text>
 </g>
 <g class="chip s-partial">
-<title>upgrade-cluster · In progress
-Sandbox only, not production.</title>
+<title>delete-stray-vm · In progress
+On main: removes a VM that a create-vm run left on a cluster it moved on from, by its run-id label. Its deployment is still to be confirmed.</title>
 <rect class="card" x="856.5" y="424" width="215.5" height="54" rx="9"/>
 <rect class="accent" x="856.5" y="434" width="3" height="34" rx="1.5"/>
 <circle class="pulse" cx="878.5" cy="451.0" r="8"/><circle cx="878.5" cy="451.0" r="8" fill="var(--card)" stroke="var(--warn)" stroke-width="2"/><path d="M878.5,443.0 A8,8 0 0 1 878.5,459.0 Z" fill="var(--warn)"/>
-<text class="name" x="896.5" y="447">upgrade-cluster</text>
+<text class="name" x="896.5" y="447">delete-stray-vm</text>
 <text class="owner" x="896.5" y="464">workflows</text>
+</g>
+<g class="chip s-partial">
+<title>upgrade-cluster · In progress
+Sandbox only, not production.</title>
+<rect class="card" x="174.0" y="488" width="215.5" height="54" rx="9"/>
+<rect class="accent" x="174.0" y="498" width="3" height="34" rx="1.5"/>
+<circle class="pulse" cx="196.0" cy="515.0" r="8"/><circle cx="196.0" cy="515.0" r="8" fill="var(--card)" stroke="var(--warn)" stroke-width="2"/><path d="M196.0,507.0 A8,8 0 0 1 196.0,523.0 Z" fill="var(--warn)"/>
+<text class="name" x="214.0" y="511">upgrade-cluster</text>
+<text class="owner" x="214.0" y="528">workflows</text>
 </g>
 <g class="chip s-todo">
 <title>deprovision-cluster · Not started
 Planned. Today an ArgoCD PostDelete hook releases the segment.</title>
-<rect class="card" x="174.0" y="488" width="215.5" height="54" rx="9"/>
-<rect class="accent" x="174.0" y="498" width="3" height="34" rx="1.5"/>
-<circle cx="196.0" cy="515.0" r="7.5" fill="none" stroke="var(--todo)" stroke-width="1.6" stroke-dasharray="2.6 2.4"/>
-<text class="name" x="214.0" y="511">deprovision-cluster</text>
-<text class="owner" x="214.0" y="528">workflows</text>
+<rect class="card" x="401.5" y="488" width="215.5" height="54" rx="9"/>
+<rect class="accent" x="401.5" y="498" width="3" height="34" rx="1.5"/>
+<circle cx="423.5" cy="515.0" r="7.5" fill="none" stroke="var(--todo)" stroke-width="1.6" stroke-dasharray="2.6 2.4"/>
+<text class="name" x="441.5" y="511">deprovision-cluster</text>
+<text class="owner" x="441.5" y="528">workflows</text>
 </g>
 <rect class="band" x="24" y="588" width="1060" height="150" rx="12"/>
 <text class="lane-title" x="40" y="616">Desired state</text>
@@ -229,7 +238,7 @@ The only applicator of desired state.</title>
 </g>
 <g class="chip s-todo">
 <title>Capacity policy file · Not started
-AD31: maxNodes, freeCpuPercent, standby sizes, read by placement and the KV Capacity Controller alike.</title>
+AD31: the ConfigMap capacity-policy, with maxNodes, freeCpuPercent, growAtCpuPercent, standbyWorkers and standbyClusters, read by placement and the KV Capacity Controller.</title>
 <rect class="card" x="174.0" y="668" width="215.5" height="54" rx="9"/>
 <rect class="accent" x="174.0" y="678" width="3" height="34" rx="1.5"/>
 <circle cx="196.0" cy="695.0" r="7.5" fill="none" stroke="var(--todo)" stroke-width="1.6" stroke-dasharray="2.6 2.4"/>
@@ -260,7 +269,7 @@ Hosted control planes on the MCE; workers from InfraEnv pools.</title>
 </g>
 <g class="chip s-todo">
 <title>Seed clusters · Not started
-One bare-metal seed per zone (AD17). Its day1 folders do not exist yet.</title>
+At least one bare-metal seed per zone (AD17). Its day1 folders do not exist yet.</title>
 <rect class="card" x="629.0" y="784" width="215.5" height="54" rx="9"/>
 <rect class="accent" x="629.0" y="794" width="3" height="34" rx="1.5"/>
 <circle cx="651.0" cy="811.0" r="7.5" fill="none" stroke="var(--todo)" stroke-width="1.6" stroke-dasharray="2.6 2.4"/>
@@ -276,12 +285,12 @@ Proven in the lab only.</title>
 <text class="name" x="896.5" y="807">KV clusters</text>
 <text class="owner" x="896.5" y="824">platform</text>
 </g>
-<g class="chip s-todo">
-<title>vm-lifecycle-worker · Not started
-One per KV cluster: reports capacity and builds VMs, with its ConfigMap (cluster, site, VLAN, MAC prefix).</title>
+<g class="chip s-partial">
+<title>vm-lifecycle-worker · In progress
+On main: a worker inside each KV cluster, on that cluster&#x27;s own queue, reads its figures and creates and deletes VMs. KubeMacPool assigns MACs, so its chart is the same on every KV cluster. Its deployment is still to be confirmed.</title>
 <rect class="card" x="174.0" y="848" width="215.5" height="54" rx="9"/>
 <rect class="accent" x="174.0" y="858" width="3" height="34" rx="1.5"/>
-<circle cx="196.0" cy="875.0" r="7.5" fill="none" stroke="var(--todo)" stroke-width="1.6" stroke-dasharray="2.6 2.4"/>
+<circle class="pulse" cx="196.0" cy="875.0" r="8"/><circle cx="196.0" cy="875.0" r="8" fill="var(--card)" stroke="var(--warn)" stroke-width="2"/><path d="M196.0,867.0 A8,8 0 0 1 196.0,883.0 Z" fill="var(--warn)"/>
 <text class="name" x="214.0" y="871">vm-lifecycle-worker</text>
 <text class="owner" x="214.0" y="888">workflows</text>
 </g>
@@ -386,7 +395,7 @@ AD34: herzi labels every bound Agent redbull.io/claimed.</title>
 </g>
 <g class="chip s-todo">
 <title>KV Capacity Controller · Not started
-AD27/AD28/AD35: grows the active KV cluster, keeps a standby. Specification only.</title>
+AD27, AD28, AD35: grows each KV NodePool from 70% requested CPU, up to 40 nodes a cluster, and keeps an empty standby. Specification only.</title>
 <rect class="card" x="856.5" y="1144" width="215.5" height="54" rx="9"/>
 <rect class="accent" x="856.5" y="1154" width="3" height="34" rx="1.5"/>
 <circle cx="878.5" cy="1171.0" r="7.5" fill="none" stroke="var(--todo)" stroke-width="1.6" stroke-dasharray="2.6 2.4"/>
