@@ -1,98 +1,126 @@
 # 04 :: Update NodePool
 
 **Animation:** [`../animations/04-update-nodepool.html`](../animations/04-update-nodepool.html)
+**Implementation:** [`update_nodepool.py`](https://github.com/team-redbull/workflows/blob/main/workflow_domains/server_lifecycle/update_nodepool.py), with its children `scale_up_nodepool.py` and `scale_down_nodepool.py`, in `team-redbull/workflows`
 
 | | |
 |---|---|
-| **Trigger** | Customer, changing a worker count up or down |
-| **Workflow id** | `update-nodepool-<cluster>-<node-type>` — one in flight per pair |
-| **Runs on** | Git, then the hub's queue to watch convergence |
-| **Writes** | Git only |
-| **Ends at** | ArgoCD synced. **Not** at nodes ready. |
+| **Trigger** | A tenant through Wingman, or an SRE: set how many workers one NodePool runs. The KV Capacity Controller, growing a KV cluster's NodePool ([kv-capacity-controller.md](../kv-capacity-controller.md), R1) |
+| **Workflow id** | `update-nodepool-<cluster>`, one run per cluster; its children `scale-up-nodepool-<cluster>` and `scale-down-nodepool-<cluster>` |
+| **Runs on** | The MCE's server-lifecycle queue; day1 Git, applied by ArgoCD |
+| **Writes** | The NodePool's replicas in the cluster's day1 file, on `main`; for a scale-down, the `cluster.x-k8s.io/delete-machine` mark on the Machines that leave |
+| **Ends at** | ArgoCD synced to the commit and the NodePool read back; for a scale-down, every marked Machine deleting |
 
-> **This is the only place a customer's desired worker count enters the system.** Everything
-> downstream is a consequence. This workflow never provisions, never destroys, and never
-> talks to the inventory.
+> **The desired worker count enters the system here, and only here.** Supplying the machines
+> (the Inventory Controller, AD26) and collecting the ones that leave (AD34) follow from it.
 
 ---
 
 ## 1 :: Purpose
 
-Set the desired replica count for one cluster and one worker type, spread across the three
-zones. Create the NodePools first if this worker type is new to the cluster.
+Set one NodePool's replicas exactly as asked. Only the cluster's own NodePools count, and each
+NodePool is set on its own, with no balance rule across its siblings. For a scale-down, choose which
+servers leave: named servers, a policy, or CAPI's own pick.
 
 ---
 
 ## 2 :: Inputs
 
-| Field | Type | Required | Notes |
-|---|---|---|---|
-| `cluster` | str | ✅ | Existing hosted cluster |
-| `node_type` | str | ✅ | e.g. `32-128` |
-| `desired_total` | int | ✅ | **Absolute total across all three zones**, never a delta |
-| `values_branch` | str | ✅ | Branch to commit on |
+`POST /workflows/server-lifecycle/update-nodepool`
 
-Absolute rather than delta is deliberate. A delta requires the caller to know the current
-state and makes two concurrent requests lossy. An absolute value is idempotent, and the last
-one wins without any coordination.
+| Field | Required | Notes |
+|---|---|---|
+| `mce_cluster` | ✅ | The MCE, by cluster name. It selects the worker queue and the day1 folder |
+| `cluster` | ✅ | The hosted cluster, whose day1 file holds its NodePools |
+| `nodepool` | ✅ | The NodePool to change |
+| `replicas` | ✅ | The NodePool's new total, absolute: a repeat changes nothing |
+| `scale_down_policy` | | Scale-down only: `fewest-pods`, `least-requested` or `least-utilized`, ahead of the NodePool's own `redbull.io/scale-down-policy` |
+| `server_names` | | Scale-down only: exactly the servers that leave, as many as the replicas removed. Sent without `scale_down_policy` |
+
+A run that scales up, or changes nothing, lists the two scale-down fields in its result's `ignored`.
 
 ---
 
 ## 3 :: Process flow
 
-| # | Phase | Runs on | Action | On failure |
-|---|---|---|---|---|
-| 1 | `validating` | brain | `desired_total >= 3`, cluster exists, pools exist for this type in all zones | Terminal. Below three, tell the caller to delete instead. |
-| 2 | `reading-current` | git | Read the current replicas for all three zones in one clone | Retry |
-| 3 | `computing` | brain | Spread the total evenly; earlier zones take the remainder | — |
-| 4 | `checkpoint` | brain | If a newer request arrived while reading, pivot to it now | — |
-| 5 | — | brain | No change? Complete without committing. | — |
-| 6 | `creating-or-updating` | git | Create the three manifests if absent, else patch `spec.replicas`. One commit. | Retry |
-| 7 | — | human | Merge to main | Out of band |
-| 8 | `awaiting-sync` | hub queue | Wait for ArgoCD healthy and synced | Bounded wait, then fail |
-| 9 | `completed` | — | Report the per-zone distribution | |
+### `update-nodepool`
 
-### Distribution
+| # | Phase | Action | On failure |
+|---|---|---|---|
+| 1 | `reading-day1` | Read the cluster's day1 file: its HostedCluster, and every NodePool's replicas and InfraEnv | A file with problems is refused |
+| 2 | `reading-nodepools` | Read the HostedCluster's NodePools on the MCE. Live and Git agree both ways: the same NodePools, InfraEnvs and replicas | `NodePoolReplicasDriftError`, nothing written. A NodePool on neither side: `NodePoolNotFoundError` |
+| 3 | `planning` | The NodePool takes the number asked. A NodePool already there completes with direction `none` | Named servers that do not match the replicas removed: `ScaleDownServersInvalidError`, nothing written |
+| 4 | `scaling-up` or `scaling-down` | The child of that direction, awaited, on its own id and queue | |
 
-```
-base   = desired_total / 3
-extra  = desired_total % 3
-zones sorted; the first `extra` zones get base + 1
-```
+### `scale-up-nodepool`
 
-Deterministic, so the same total always yields the same layout regardless of current state.
+| # | Phase | Action |
+|---|---|---|
+| 1 | `committing-day1` | The new replicas on day1 `main`, compare-and-set on the file the parent read |
+| 2 | `syncing-argo` | The cluster's ArgoCD Application synced to exactly that commit |
+| 3 | `verifying-nodepools` | Every NodePool read back on the MCE with its new replicas |
+
+### `scale-down-nodepool`
+
+| # | Phase | Action | On failure |
+|---|---|---|---|
+| 1 | `selecting-servers` | Named servers: each one's Machine, found by its Agent's BareMetalHost, else its hostname, else its Node. A policy: the NodePool's Machines ranked by it. Neither: CAPI picks at random | Refused, with nothing written: an unknown policy, a Machine already deleting or marked by another run, a rollout, a named server that no Machine of the NodePool is, or an unnamed CAPI-unhealthy Machine that CAPI would take instead |
+| 2 | `marking-machines` | Put `cluster.x-k8s.io/delete-machine` on each chosen Machine, and read it back, before the commit | |
+| 3 | `committing-day1` | As in scale-up | A refused commit takes the marks off again, and the run fails |
+| 4 | `syncing-argo` | As in scale-up. Once the commit has landed the marks stay: they make CAPI take the right servers | |
+| 5 | `verifying-nodepools` | As in scale-up | |
+| 6 | `verifying-machines` | With marks: every marked Machine deleting or gone | An unmarked Machine deleting fails the run |
+
+### Why mark first, then lower the count
+
+CAPI deletes a marked Machine before any other, under every delete policy, so lowering the replicas
+then removes exactly the Machines marked. Deleting a Machine directly makes its MachineSet replace it
+at once, so the node comes back on another machine.
 
 ---
 
-## 4 :: What happens next, and why it is not here
+## 4 :: What happens next
 
-**Scaling up.** The NodePools now want more agents than exist. The hub's NodePool controller
-claims whatever is free. The Inventory Controller sees demand rise, computes a new target
-and triggers [01](01-add-server-to-mce.md). If the warm pool was deep enough, the nodes are
-already there.
+**Scaling up.** The NodePool's new workers wait for Agents. The Inventory Controller orders a
+machine for each waiting worker, using a spare first (AD26, [01](01-add-server-to-mce.md)).
 
-**Scaling down.** Agents are released and become unbound, back in the pool, available to the
-next cluster. Nothing is destroyed. Only if that pushes the pool above its ceiling, and it
-stays there through the cooldown, does [02](02-remove-server-from-mce.md) run.
+**Scaling down.** CAPI deletes the marked Machines, their nodes drain, and their Agents come free.
+Each of those Agents is used, labelled `redbull.io/claimed`, so no NodePool claims it again. The
+Inventory Controller collects it through `remove-server-from-mce`, which deletes a VM as its last
+step (AD34, AD36, [02](02-remove-server-from-mce.md)). A machine that has served a cluster is never
+reused as it is (AD23).
 
-This separation is the point. Demand and supply are two loops that touch only through
-observed state on the hub.
+Demand and supply meet only in what the hub shows.
 
 ---
 
 ## 5 :: Idempotency
 
-- The workflow id is the cluster and node type, so concurrent requests for the same pair
-  serialize rather than racing on one Git file.
-- The written value is absolute, so a replay produces the same manifest.
-- A commit is skipped entirely when the computed distribution already matches.
+- One run per cluster, so requests for one cluster run one at a time.
+- Replicas are absolute, so a repeat commits nothing new.
+- A re-run resumes: when day1 already holds the number but the MCE does not show it yet, the run
+  carries on from the sync.
+- Marks are read back, and an earlier attempt's mark on a Machine no longer chosen is taken off
+  first.
 
 ---
 
-## 6 :: Gaps
+## 6 :: Built today vs. the architecture
 
-1. **No capacity pre-flight.** A total the pools cannot absorb is committed anyway and the
-   NodePool waits forever. Same gap as [03](03-create-hosted-cluster.md).
-2. **No upper bound.** Nothing stops a request that exceeds the cell's node cap.
-3. The merge to main is manual, so the time from request to running node is not predictable
-   from inside this workflow.
+`team-redbull/workflows`, `main`, as of 2026-11-26:
+
+| # | Architecture | Built today |
+|---|---|---|
+| 1 | The phases above | Built |
+| 2 | The Inventory Controller collects the Agents a scale-down frees (AD34) | Still to be built in herzi (herzi PR #1). Today a freed Agent goes back to its pool as it is |
+| 3 | `update-nodepool` creates a NodePool that is missing: the KV Capacity Controller opens a node type on the standby this way (kv-capacity-controller.md, R1) | Refused with `NodePoolNotFoundError` |
+
+---
+
+## 7 :: Open questions
+
+1. **Who releases the machines a scale-down frees:** `update-nodepool` itself, through a
+   `remove-server-from-mce` child, or the Inventory Controller alone (procedure 19, §3.2).
+2. **The NodePool floor.** A KV cluster's NodePools keep at least 5 nodes. For tenant NodePools
+   the recommendation is one, so a zone stays in the cluster (procedure 19, D2). Where the floor is
+   enforced is still open.

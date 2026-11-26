@@ -48,8 +48,6 @@ replica change goes.
 
 ## 3 :: What has to be added
 
-Each item matches a finding in [`../review/update-nodepool-assessment.md`](../review/update-nodepool-assessment.md).
-
 ### 3.1 Named mode (finding 2)
 
 Add an optional `node_name` to the request, valid only with `nodepool` and
