@@ -59,7 +59,7 @@
           "name": "remove-server-from-mce",
           "owner": "team-redbull/workflows",
           "status": "partial",
-          "note": "BareMetalHost and NMStateConfig deleted, metal3 powering the host off; Agent; PXE entries. Not yet: deleting a VM server's VM as its last step (AD36).",
+          "note": "BareMetalHost and NMStateConfig deleted, metal3 powering the host off; Agent; PXE entries. Not yet: deleting a VM server's VM right after its host is released (AD36).",
           "link": "https://github.com/team-redbull/workflows"
         },
         {

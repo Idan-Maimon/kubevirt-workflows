@@ -54,7 +54,7 @@ check, are all things the code learned the hard way.
 | 22 | [Delete VM](22-delete-vm.md) | `remove-server-from-mce`, for a VM server; `create-vm`, for a stray |
 
 One workflow for virtual and bare metal (AD29). A VM pool first **creates** its VM (21), where
-bare metal **draws** an existing machine, and a removal **deletes** a VM as its last step (22).
+bare metal **draws** an existing machine, and a removal **deletes** a VM as soon as its host is released (22).
 Everything else is identical, because both end as an Agent.
 
 ## Tenant clusters

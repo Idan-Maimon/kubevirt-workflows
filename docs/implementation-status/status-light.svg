@@ -90,7 +90,7 @@ Bare metal done; the draw comes from the InfraEnv&#x27;s agentLabels. Not yet: t
 </g>
 <g class="chip s-partial">
 <title>remove-server-from-mce · In progress
-BareMetalHost and NMStateConfig deleted, metal3 powering the host off; Agent; PXE entries. Not yet: deleting a VM server&#x27;s VM as its last step (AD36).</title>
+BareMetalHost and NMStateConfig deleted, metal3 powering the host off; Agent; PXE entries. Not yet: deleting a VM server&#x27;s VM right after its host is released (AD36).</title>
 <rect class="card" x="629.0" y="296" width="215.5" height="54" rx="9"/>
 <rect class="accent" x="629.0" y="306" width="3" height="34" rx="1.5"/>
 <circle class="pulse" cx="651.0" cy="323.0" r="8"/><circle cx="651.0" cy="323.0" r="8" fill="var(--card)" stroke="var(--warn)" stroke-width="2"/><path d="M651.0,315.0 A8,8 0 0 1 651.0,331.0 Z" fill="var(--warn)"/>

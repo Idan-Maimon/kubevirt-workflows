@@ -5,7 +5,7 @@
 
 | | |
 |---|---|
-| **Trigger** | `remove-server-from-mce`, as its last step, for a VM server (AD36); `create-vm`, for a VM left on a cluster it moved on from (`delete-stray-vm`) or for its own VM when it ends without it |
+| **Trigger** | `remove-server-from-mce`, right after metal3 releases the VM's BareMetalHost, for a VM server (AD36); `create-vm`, for a VM left on a cluster it moved on from (`delete-stray-vm`) or for its own VM when it ends without it |
 | **Runs on** | The worker inside the VM's KV cluster, on that cluster's own queue |
 | **Finds the VM by** | Its `redbull.io/created-by` label: the id of the `create-vm` run that built it |
 | **Deletes** | That VM and its root disk |
@@ -41,7 +41,7 @@ same name, stays.
 | # | Step | Runs on | Action |
 |---|---|---|---|
 | 1 | Read the labels | MCE queue | `remove-server-from-mce` reads the BareMetalHost's `redbull.io/kv-cluster` and `redbull.io/created-by` in its first step, before it deletes the host |
-| 2 | Host gone | MCE queue | metal3 has powered the VM off through kubevirt-redfish, and the BareMetalHost, NMStateConfig and Agent are deleted ([02](02-remove-server-from-mce.md)) |
+| 2 | Host gone | MCE queue | metal3 has powered the VM off through kubevirt-redfish and released the BareMetalHost; the NMStateConfig and BMC Secret are deleted ([02](02-remove-server-from-mce.md)). The Agent and the PXE entries are cleared only after the VM's delete |
 | 3 | `deleting-vm` | KV cluster's worker | `delete_vm_on_cluster` deletes every VM labelled with that run id, in every namespace, retried until the cluster answers |
 | 4 | Room given back | KV cluster | The VM and its root disk are gone: kubevirt-redfish drops the system, server-scan drops the server at its next collection, and the cluster's figures show the room |
 
@@ -64,7 +64,7 @@ same name, stays.
 
 | # | Architecture | Built today |
 |---|---|---|
-| 1 | `remove-server-from-mce` deletes a VM server's VM as its last step | Still to be built: the `deleting-vm` step, and the two labels on the BareMetalHost |
+| 1 | `remove-server-from-mce` deletes a VM server's VM right after metal3 releases its BareMetalHost | Still to be built: the `deleting-vm` step, and the two labels on the BareMetalHost |
 | 2 | `delete-stray-vm` removes a VM left on a cluster `create-vm` moved on from | Built |
 | 3 | `create-vm` deletes its own VM when it ends without it | Built |
 | 4 | `delete_vm_on_cluster`, on each KV cluster's worker, deletes by the run-id label | Built |

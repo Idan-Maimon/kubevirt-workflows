@@ -72,7 +72,7 @@ Controller:
 | Drain and unbind | CAPI and the Agent provider | The Node drains, the Machine and AgentMachine go, and the Agent comes free |
 | Held out of the pool | Every NodePool | The Agent has carried `redbull.io/claimed` since it was bound (R2), and every NodePool excludes the label |
 | Collect | The Inventory Controller | It starts `remove-server-from-mce-<server>` for the used Agent (R3) |
-| VM | `remove-server-from-mce` | The VM is deleted as the run's last step, by its run-id label (AD36) |
+| VM | `remove-server-from-mce` | The VM is deleted right after metal3 releases its BareMetalHost, by its run-id label (AD36) |
 | Bare metal | server-scan | Reinstalled from scratch by the next install that draws it |
 
 The cluster's run slot is free as soon as the Machine is deleting, so the cluster takes its next
