@@ -96,8 +96,8 @@ before it draws:
 
 1. `create-vm` takes the zone's lock (AD32) and places the VM on the first KV cluster that fits, in
    creation order (AD33).
-2. It creates the VM Halted, with `<cpu>` vCPUs, a fixed MAC and the name
-   `ocp-<flavor>-kv<cpu>-<site>-<mac>`. kubevirt-redfish exposes it, and server-scan lists it.
+2. It creates the VM Halted, with `<cpu>` vCPUs, the MAC KubeMacPool assigns it and the name
+   `ocp-<flavor>-kv<cpu>-<site>-<serial>`. kubevirt-redfish exposes it, and server-scan lists it.
 3. The parent installs exactly that VM, from step 4 on.
 
 ---
@@ -158,7 +158,7 @@ A cancelled run that has written to the MCE removes the server through a
 | 2 | The draw matches the zone, which server-scan holds from the ACI leaf (naming convention §3) | The draw matches flavor, size and site (`_POOL_LABELS`) |
 | 3 | Every run labels its objects `redbull.io/installed-by: <workflow id>` (inventory-controller.md) | Still to be built |
 | 4 | `create-vm` places a VM on the first KV cluster that fits, under the zone's lock (AD32, AD33) | `create-vm` ranks the zone's clusters by best-fit bin packing (`placement.py`). The lock and first fit are in the design on branch `docs/create-vm-placement` |
-| 5 | VM names `ocp-<flavor>-kv<cpu>-<site>-<mac>` (naming convention §1) | `create-vm` names VMs `ocp-<infraenv>-<6 hex>` and reads the earlier InfraEnv names (`<conf>[-<opt>]-zone-<zone>-<cpu>`), so a draw by flavor, size and site misses its VMs |
+| 5 | VM names `ocp-<flavor>-kv<cpu>-<site>-<serial>` (naming convention §1) | Built: `create-vm` names VMs this way, with an 8-character serial that is also the VM's SMBIOS serial, and reads the convention's InfraEnv names |
 
 ---
 
