@@ -47,6 +47,7 @@
 | C7 | KubeVirt Live Migration requires shared storage. VMs can only live-migrate between hypervisor nodes that share a storage backend. This is a KubeVirt/libvirt constraint. It also means live migration cannot cross AZ boundaries if the storage backend is AZ-scoped. The choice of storage product is made in the storage design document, not here |
 | C8 | A VM cannot live-migrate to a host with an older CPU generation, because the guest is exposed to the source host's CPU features and the destination must present at least the same set. Inventory therefore has to track back to the physical server type: a VM pool is bound to the hardware it was built on, which is why the InfraEnv name carries the server type and why the same VM size on two server types is two separate pools (AD21). Like C7, this bounds where a running VM may move |
 | C9 | Cisco UCS limits a server's name to 32 characters. A bare-metal node is named `ocp-<flavor>-mtl-<site>-<serial>` (naming convention), so with an 11-character Cisco serial the site name has at most 6 characters: `ocp-` (4) + flavor with variant (5) + `-mtl-` (5) + site + `-` (1) + serial (11) = 26 + site. The provisioning workflow checks a name's length before writing it to OME or UCS |
+| C10 | A Seed cluster manages at most 240 nodes, so it hosts at most six KV clusters of 40 nodes (AD28) |
 
 ---
 
@@ -104,6 +105,7 @@
 | AD36 | Removing a VM Server Deletes Its VM in the Same Workflow | Every caller of `remove-server-from-mce` (the Inventory Controller, `uninstall-server-from-hc`, a cancelled install) then destroys a VM the same way, so no path leaves one to be reused as it is (AD23) or to hold its KV cluster's capacity while Halted. |
 | AD37 | Objects Are Labelled With the Run ID That Made Them | A pool slot's workflow id is used again by later runs, so a label carrying it can point at an earlier run's machine, and the Inventory Controller would take a new install for one already delivered. A run id belongs to one run only. |
 | AD38 | VM Names End in a Random Serial, Not the MAC | A VM is named before it exists, when its MAC is unknown: KubeMacPool assigns it at admission, and a requested MAC can be admitted on several VMs at once. The serial is also the VM's SMBIOS serial, so the Agent's inventory reports the serial the name carries, as a bare-metal node's name carries its hardware serial. |
+| AD39 | Wingman Opens a New Seed for a Zone's Next KV Clusters | A Seed manages at most 240 nodes, six KV clusters of 40 (C10), and building a Seed takes far longer than a KV cluster, so the next Seed has to exist before the zone's last Seed is full. Wingman already holds the fleet's view of every Seed. |
 
 ---
 
@@ -212,9 +214,9 @@ The OCP KubeVirt platform provides a fully automated, GitOps-driven lifecycle fo
 
 | Term | Definition |
 |---|---|
-| **Temporal** | Durable workflow orchestration engine used for all imperative, cross-cluster operations. Guarantees transactional safety by committing exclusively to Git (AD13). |
-| **ArgoCD** | GitOps continuous delivery tool. Watches the Git repository and applies desired-state changes to clusters. The sole state applicator; no component applies changes directly to clusters (AD5). |
-| **GitOps / SSOT** | The practice of using Git as the single source of truth for all cluster state. All changes flow through Git commits observed by ArgoCD, ensuring immutable, auditable state (AD5, AD13). |
+| **Temporal** | Durable workflow orchestration engine running every imperative, cross-cluster operation. It commits cluster-level desired state, such as a NodePool's replicas, to Git (AD13), and writes machine-level objects (VMs, BareMetalHosts, NMStateConfigs, BMC Secrets) directly to the cluster's API through its activities (AD22). |
+| **ArgoCD** | GitOps continuous delivery tool. Watches the Git repository and applies cluster-level desired state, such as HostedClusters and NodePools, to clusters (AD5). Machine-level objects follow that state through Temporal's activities (AD22). |
+| **GitOps / SSOT** | Git as the single source of truth for cluster-level state: HostedClusters, NodePools, versions, network. Its changes flow through Git commits that ArgoCD applies, so they stay auditable (AD5, AD13). Machine-level objects follow the cluster's state through Temporal's activities, as Pods follow a Deployment (AD22). |
 | **DLQ (Dead Letter Queue)** | Temporal's mechanism for capturing workflows that have exhausted all retries. Failed operations are sent to the DLQ for manual investigation and remediation. |
 | **Compensating Transaction** | An idempotent operation that reverses or neutralises the effect of a previous step when a workflow fails mid-execution, e.g. `add-server-to-mce` removing the resources it created when no Agent appears. |
 | **Run ID** | Temporal's id for one execution of a workflow, never reused. A pool slot's workflow id is reused by later runs, so a label names the run that made an object by its run id (AD37). |
