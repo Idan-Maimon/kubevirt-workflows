@@ -141,7 +141,7 @@ WORKFLOWS["01-add-server-to-mce"] = dict(
              "create-vm child (AD29). Where main differs today, the step says so (procedure 01, §8).",
     look="v2",
     nodes={"cvm":  NK(20, 36, "create-vm", "child · zone lock, first fit", "orch"),
-           "vm":   NK(20, 140, "VirtualMachine", "Halted · fixed MAC", "machine"),
+           "vm":   NK(20, 140, "VirtualMachine", "Halted · MAC from KubeMacPool", "machine"),
            "ctl":  NK(20, 262, "Inventory Controller", "herzi · or an operator", "actor"),
            "tmp":  NK(385, 20, "Temporal", "add-server-to-mce · a run per slot", "orch", 230),
            "seg":  NK(780, 20, "Segments Manager", "the MCE's VLAN", "svc"),
@@ -209,19 +209,20 @@ WORKFLOWS["01-add-server-to-mce"] = dict(
       ("tmp","cvm","VM","Build the VM","create-vm child (AD29)",
        {"call":"child workflow create-vm-ocp4-prod-mce-five-a_c200-kv32-az1_1",
         "send":"InfraEnv c200-kv32-az1: 32 vCPUs, zone az1",
-        "warn":"The zone's lock (AD32), then the first KV cluster that fits, in creation\n"
-               "order (AD33).\n\n"
-               "Built today: create-vm runs as its own workflow and ranks the zone's\n"
-               "clusters by best fit. The child, the lock and first fit are still to be\n"
-               "built (procedure 01, §8)."}),
+        "warn":"The zone's lock (AD32), then the oldest KV cluster that fits (AD33):\n"
+               "procedure 21.\n\n"
+               "Built today: create-vm runs as its own workflow, started through\n"
+               "POST /workflows/vm-lifecycle/create-vm. The lock and the placement are\n"
+               "built; the child is still to be built (procedure 01, §8)."}),
 
-      ("cvm","vm","VM","VM created, Halted","Fixed MAC · kubevirt-redfish exposes it",
-       {"call":"CREATE kubevirt.io/v1 VirtualMachine   on the chosen KV cluster",
-        "send":"name: ocp-c200-kv32-five-02a1b2c3d4e5\n"
-               "runStrategy: Halted · a fixed MAC · label redfish-enabled: \"true\"",
+      ("cvm","vm","VM","VM created, Halted","KubeMacPool's MAC · kubevirt-redfish exposes it",
+       {"call":"CREATE kubevirt.io/v1 VirtualMachine   by the chosen KV cluster's worker",
+        "send":"name: ocp-c200-kv32-five-k7q2m9xd   (an 8-character serial)\n"
+               "runStrategy: Halted · no MAC requested: KubeMacPool assigns it\n"
+               "labels: redbull.io/created-by: <run id> · redfish-enabled: \"true\"",
         "recv":"the root disk bound; kubevirt-redfish exposes it as a Redfish system",
-        "warn":"Built today: VMs are named ocp-<infraenv>-<6 hex>, which a draw by\n"
-               "flavor, size and site misses (procedure 01, §8)."}),
+        "warn":"The serial is also the VM's SMBIOS serial, so the Agent's inventory\n"
+               "reports the serial its name carries, as bare metal does."}),
 
       ("hubw","scan","both","Allocate one server","acquiring-server · locked for this run",
        {"call":"POST /servers/available",
@@ -266,11 +267,12 @@ WORKFLOWS["01-add-server-to-mce"] = dict(
                "  customDeploy: start_assisted_install\n"
                "labels:\n"
                "  infraenvs.agent-install.openshift.io: c200-mtl-az1\n"
-               "  redbull.io/installed-by: <this run's workflow id>",
+               "  redbull.io/installed-by: <this run's run id>   (AD37)",
         "warn":"installed-by lets the controller count the machine once: in flight until\n"
                "its Agent exists, then as a free Agent. A VM's BareMetalHost points at\n"
-               "its Redfish endpoint on kubevirt-redfish.\n\n"
-               "Built today: the installed-by label is still to be built (procedure 01, §8)."}),
+               "its Redfish endpoint on kubevirt-redfish, and also carries\n"
+               "redbull.io/kv-cluster and redbull.io/created-by for its later delete.\n\n"
+               "Built today: these labels are still to be built (procedure 01, §8)."}),
 
       ("res","srv","both","Boot the discovery image","Ironic powers the host on.",
        {"call":"Ironic, through the BMC: virtual media, or PXE for IPMI",
@@ -296,132 +298,311 @@ WORKFLOWS["01-add-server-to-mce"] = dict(
       ("agt","ctl","both","Counted once","The next pass sees a free Agent.",
        {"call":"the controller's next pass lists the pool's Agents",
         "recv":"the new Agent counts as free; its run, still holding the lock, is\n"
-               "matched through installed-by and counted once",
+               "matched by its run id through installed-by, and counted once",
         "warn":"A NodePool claims the Agent like any other. Once bound, the controller\n"
                "labels it redbull.io/claimed (AD34)."}),
     ])
 
 WORKFLOWS["02-remove-server-from-mce"] = dict(
     title="02 :: Remove Server from MCE",
-    subtitle="Only runs when a pool has been <em>above</em> its ceiling for the cooldown. "
-             "A tenant scaling down returns agents to the pool; it does not come here.",
-    nodes={"tmp":  N(400, 16, "Temporal", "one run per machine", 210, 46),
-           "scan": N(815, 16, "server-scan", "fleet inventory", 165, 46),
-           "kvw":  N(812, 120, "KV worker", "PLANNED, same pattern", 156, 42),
-           "vm":   N(812, 176, "VirtualMachine", "destroyed", 156, 42),
-           "pxe":  N(20, 252, "PXE Host", "per site", 165, 46),
-           "hubw": N(265, 292, "server-lifecycle worker", "the hub's own SA", 215, 48),
-           "ctl":  N(505, 292, "Inventory Controller", "in-cluster", 240, 48),
-           "agt":  N(265, 372, "Agent", "must be unbound", 215, 46),
-           "res":  N(505, 372, "BMH + NMState", "+ BMC Secret", 240, 46),
-           "gone": N(350, 452, "Verified gone", "nothing survives", 300, 46)},
-    group=[{"x": 795, "y": 86, "w": 190, "h": 150, "label": "KV CLUSTER"},
-           {"x": 240, "y": 250, "w": 530, "h": 290, "label": "MCE HUB"}],
+    subtitle="One start per server takes it out of an MCE's inventory, so a machine that has served a "
+             "cluster is never reused as it is (AD23). Bare metal goes back to server-scan for a full "
+             "reinstall; a VM is deleted as the last step (AD36). Where main differs today, the step says so "
+             "(procedure 02, §6).",
+    look="v2",
+    nodes={"ctl":  NK(20, 30, "Inventory Controller", "collects used Agents", "actor"),
+           "tmp":  NK(385, 30, "Temporal", "remove-server-from-mce-<server>", "orch", 230),
+           "pxe":  NK(780, 160, "PXE VM", "the MCE's site", "svc"),
+           "hubw": NK(400, 160, "server-lifecycle worker", "activities on the MCE", "hub"),
+           "bmh":  NK(270, 280, "BMH · NMState · Secret", "the host's objects", "hub"),
+           "agt":  NK(520, 280, "Agent", "unbound · used", "hub", 180),
+           "m3":   NK(270, 410, "metal3 · Ironic", "deprovisions the host", "hub"),
+           "kvw":  NK(780, 330, "KV cluster worker", "the VM's own cluster", "svc"),
+           "vm":   NK(780, 440, "VirtualMachine", "found by its run id", "machine")},
+    group=[{"x": 250, "y": 130, "w": 505, "h": 345, "label": "MCE HUB"},
+           {"x": 765, "y": 300, "w": 230, "h": 210, "label": "KV CLUSTER · VMs"}],
     steps=[
-      ("ctl","agt","both","Count the pool","Same read as adding. The controller looks.",
-       {"call":"LIST agent-install.openshift.io/v1beta1 Agent",
-        "recv":"assigned = 20,  spare = 6,  total = 26",
-        "warn":"A machine being torn down is STILL an Agent until the teardown finishes, so\n"
-               "it is counted here. That is why the next step exists."}),
+      ("ctl","ctl","both","A used Agent is free","R3 · unbound, labelled claimed",
+       {"call":"the controller's pass: Agents labelled redbull.io/claimed, unbound, unchanged for a grace period",
+        "recv":"ocp-c200-mtl-five-fch2145v1ab: free again after a scale-down",
+        "warn":"Others start the same run: uninstall-server-from-hc as its child, a\n"
+               "cancelled add-server-to-mce in its rollback, an operator.\n\n"
+               "Built today: herzi's collector is still to be built (herzi PR #1)."}),
 
-      ("ctl","tmp","both","Ask which removals are open","The mirror of the in-flight problem.",
-       {"call":"Temporal: list open workflows matching remove-server-*",
-        "recv":"map each run's machine back to a pool, by its name",
-        "warn":"Without this the controller over-removes. A removal in flight leaves its\n"
-               "agent visible as spare, so the next pass sees the same surplus and picks a\n"
-               "DIFFERENT machine to remove. Two minutes later, another.\n\n"
-               "Harder than the add side: a removal id is remove-server-<machine>, keyed on\n"
-               "the machine rather than the pool, so you cannot match by id pattern. The\n"
-               "mapping is by machine name."}),
+      ("ctl","tmp","both","Start the removal","One start per server.",
+       {"call":"POST /workflows/server-lifecycle/remove-server-from-mce",
+        "send":"{ \"server_name\": \"ocp-c200-mtl-five-fch2145v1ab\",\n"
+               "  \"mce_cluster\": \"ocp4-prod-mce-five-a\" }",
+        "recv":"202. The workflow id is the server, so a repeated start returns 409"}),
 
-      ("ctl","ctl","both","Compute the surplus","Above the ceiling, and held there.",
-       {"call":"no call — the controller's own arithmetic",
-        "send":"ceiling = demand + high      = 20 + 4 = 24\n"
-               "surplus = total - removing - ceiling\n"
-               "        = 26    - 0        - 24       = 2",
-        "warn":"Only fires above the CEILING, not below the target, and only after the\n"
-               "surplus has persisted for the whole cooldown. Grow fast, shrink slowly:\n"
-               "shrinking late wastes a little capacity, growing late stalls a tenant.\n\n"
-               "Never shrink below target. The target is a floor as well as a ceiling."}),
+      ("tmp","hubw","both","Hand the run to the MCE","Every call is an activity there.",
+       {"call":"ExecuteActivity -> queue server-lifecycle-activity-ocp4-prod-mce-five-a",
+        "warn":"The workflow holds no credentials; the worker inside the MCE makes every\n"
+               "call to the hub."}),
 
-      ("ctl","agt","both","Pick the victims","Unbound only, longest idle first.",
-       {"call":"filter the Agents already listed",
-        "recv":"spec.clusterDeploymentName empty, and no removal already open for it",
-        "warn":"Never pick a bound agent: it is carrying a tenant workload. Never pick one\n"
-               "mid-scrub either, which is the same rule that keeps a scrubbing machine out\n"
-               "of the spare count."}),
+      ("hubw","bmh","both","Inspect the host","inspecting · BMH, NMState, Agents",
+       {"call":"GET the BareMetalHost, the NMStateConfig and the Agents matched to the host",
+        "recv":"matched by BMAC's bmh label, or by any MAC of the machine, from either\n"
+               "resource or from server-scan",
+        "warn":"Nothing found at all: the run succeeds with nothing to do.\n"
+               "For a VM, the BareMetalHost's redbull.io/kv-cluster and\n"
+               "redbull.io/created-by are read now, before the host is deleted."}),
 
-      ("ctl","tmp","both","Start one run per machine","No slots needed here.",
-       {"call":"POST /workflows/server-lifecycle/remove-server   (once per machine)",
-        "send":"{ \"server_name\": \"ocp-cisco-m6-bat-yam-64c-512gb-J3K9L2\",\n"
-               "  \"mce_cluster\": \"ocp4-prod-mce-bat-yam\" }",
-        "recv":"202 per call, or 409 if a removal for that machine is already in flight",
-        "warn":"Unlike adding, the id is remove-server-<machine>, so N removals are N\n"
-               "distinct ids and run in parallel by construction. No slot mechanism is\n"
-               "needed, and a repeat for the same machine deduplicates for free.\n\n"
-               "The distinct prefix also keeps a removal from colliding with an install of\n"
-               "the same machine."}),
+      ("hubw","agt","both","Refuse a bound Agent","spec.clusterDeploymentName",
+       {"call":"check each Agent's spec.clusterDeploymentName",
+        "recv":"unbound: carry on.   bound: AgentBoundToClusterError, nothing changed",
+        "warn":"The run covers a server that is inventory only. The controller collects\n"
+               "unbound Agents, so its runs pass this check."}),
 
-      ("tmp","hubw","both","Each run dispatches to the hub","From here on, one run, one machine.",
-       {"call":"ExecuteActivity  ->  queue server-lifecycle-activity-ocp4-prod-mce-bat-yam",
-        "warn":"The workflow holds no credentials and makes no calls; it is replayed from\n"
-               "history and must be deterministic. Every arrow below starts at a worker."}),
+      ("hubw","bmh","both","Delete NMState and BMH","removing-host · metal3 takes over",
+       {"call":"DELETE NMStateConfig · DELETE metal3.io BareMetalHost   (no Agent bound, re-checked)",
+        "warn":"No separate power-off and no finalizer dropped: metal3's own delete\n"
+               "deprovisions the host, and a finalizer dropped early once orphaned Ironic\n"
+               "nodes that kept forcing a stale power state."}),
 
-      ("hubw","agt","both","Re-check it is unbound","The race, and the last chance to catch it.",
-       {"call":"GET agent-install.openshift.io/v1beta1 Agent/<name>",
-        "recv":"spec.clusterDeploymentName must STILL be empty",
-        "warn":"Read it again immediately before the destructive step. The controller\n"
-               "chose this machine seconds or minutes ago; a NodePool can claim it at any\n"
-               "instant in between."}),
+      ("bmh","m3","both","metal3 deprovisions","on the BareMetalHost's delete",
+       {"call":"metal3: deprovisioning -> powering off before delete -> deleting",
+        "warn":"metal3 releases its finalizer only once the host is off and its Ironic\n"
+               "node is deleted."}),
 
-      ("hubw","res","both","Detach the host","Before any delete. This one is load-bearing.",
-       {"call":"PATCH metal3.io/v1alpha1 BareMetalHost/<name>",
-        "send":"metadata.annotations:\n  baremetalhost.metal3.io/detached: \"\"",
-        "warn":"Delete first and Metal3's finalizer tries to deprovision through a BMC that\n"
-               "is no longer answering, and blocks forever. Measured at 14 hours with no\n"
-               "error reported."}),
+      ("m3","m3","BM","Host powered off","through its BMC",
+       {"call":"Ironic, through the BMC: power off",
+        "recv":"the host is off, so it can no longer boot the discovery image"}),
 
-      ("hubw","res","both","Delete NMState, BMH, Secret","In that order. A missing object is success.",
-       {"call":"DELETE NMStateConfig, then BareMetalHost, then Secret",
-        "recv":"404 on any of them is success",
-        "warn":"A successful delete call does NOT mean the object is gone; finalizers can\n"
-               "hold it. Confirming is the next two steps' job."}),
+      ("m3","vm","VM","VM powered off","through kubevirt-redfish",
+       {"call":"Ironic, through kubevirt-redfish: power off",
+        "recv":"the VM is stopped on its KV cluster, its disk still in place"}),
 
-      ("res","gone","both","Clear the one finalizer","Only metal3's. Never the whole list.",
-       {"call":"PATCH BareMetalHost finalizers, after a bounded wait",
-        "send":"remove only: baremetalhost.metal3.io",
-        "warn":"Clearing the whole list strips finalizers belonging to other controllers and\n"
-               "leaks whatever they were protecting."}),
+      ("hubw","bmh","both","Wait for the BMH to go","awaiting-bmh-deletion · every 15 s",
+       {"call":"GET the BareMetalHost every 15 seconds, up to 15 minutes; then DELETE its BMC Secret",
+        "warn":"Still there after 15 minutes: BmhDeletionTimeoutError, with the Agent\n"
+               "untouched. Usually a BMC that is not answering; a re-run waits for the\n"
+               "same delete."}),
 
-      ("hubw","gone","both","Verify all three gone","Verification ends the run, not the deletes.",
-       {"call":"GET each of the three",
-        "recv":"all three must 404",
-        "warn":"The machine is NOT returned to inventory while a BareMetalHost still points\n"
-               "at it."}),
+      ("hubw","agt","both","Delete the Agent","removing-agent · last",
+       {"call":"DELETE agent-install.openshift.io/v1beta1 Agent   (re-checked as unbound)",
+        "warn":"Last, because a host still running discovery registers again within a\n"
+               "minute once its Agent disappears."}),
 
-      ("hubw","pxe","IPMI","Unmap the boot MAC","Mirror of the mapping on the way in.",
-       {"call":"DELETE /pxe-map/<boot-mac>",
-        "recv":"404 is success",
-        "warn":"Only its own site's PXE host. A removal does not touch the others."}),
+      ("hubw","pxe","both","Clear the PXE entries","removing-pxe-boot · best effort",
+       {"call":"the PXE VM of the MCE's site: clear every MAC of the host",
+        "recv":"MACs pointing at another MCE's boot entry are kept (pxe_kept)",
+        "warn":"Best effort: a failure is reported in pxe_failed, and the removal\n"
+               "completes."}),
 
-      ("kvw","vm","VM","Delete the machine","On the KV cluster, by that cluster's worker.",
-       {"call":"DELETE kubevirt.io/v1 VirtualMachine",
-        "warn":"PLANNED. With no overcommit at the hypervisor layer this is what actually\n"
-               "returns the CPU and memory; until it runs they stay reserved for a guest\n"
-               "that no longer exists."}),
+      ("hubw","hubw","both","Verify","verifying · nothing left",
+       {"call":"inspect again until no Agent, BareMetalHost or NMStateConfig is left",
+        "recv":"done, or ServerStillPresentError naming what is left"}),
 
-      ("hubw","scan","both","Release the lock","And then wait, because you cannot push the rest.",
-       {"call":"DELETE /servers/{id}/reservation",
-        "send":"{ \"holder\": \"remove-server\", \"workflow_id\": \"...\" }",
-        "warn":"There is NO endpoint that marks a machine available again. A status job on\n"
-               "the hub notices the Agent has gone, every 15 minutes, and sets it. Do not\n"
-               "design a step that tries to push it."}),
+      ("tmp","kvw","VM","Delete the VM","deleting-vm · on the cluster's own queue",
+       {"call":"delete_vm_on_cluster -> queue of ocp4-prod-kv-five-az1-a's worker",
+        "send":"every VM labelled redbull.io/created-by: <run id>, in every namespace",
+        "warn":"The cluster comes from the BareMetalHost's redbull.io/kv-cluster, read in\n"
+               "the first step. Retried until the cluster answers (procedure 22).\n\n"
+               "Built today: this step is still to be built (procedure 02, §6)."}),
 
-      ("gone","ctl","both","Next pass sees it","No parent is waiting. The loop is the controller.",
-       {"call":"nothing — the run has completed and exited",
-        "recv":"the controller's next pass, within 2 minutes, counts the pool again",
-        "warn":"Nothing owns convergence, deliberately. A failed removal leaves the surplus\n"
-               "in place and the next pass notices. The evaluation cycle IS the retry."}),
+      ("kvw","vm","VM","VM and root disk gone","Room given back to the cluster.",
+       {"call":"DELETE kubevirt.io/v1 VirtualMachine ocp-c200-kv32-five-k7q2m9xd",
+        "recv":"the VM and its root disk deleted",
+        "warn":"A Halted VM counts as used for placement and for the KV Capacity\n"
+               "Controller, so the room shows as soon as it is gone."}),
+
+      ("tmp","ctl","both","Removal complete","One used Agent fewer.",
+       {"call":"the run completes",
+        "recv":"bare metal: back in server-scan, for the next install to draw and reinstall\n"
+               "a VM: deleted",
+        "warn":"server-scan's install lock stays with its holder: a caller holding one\n"
+               "releases it itself."}),
+    ])
+
+WORKFLOWS["21-create-vm"] = dict(
+    title="21 :: Create VM",
+    subtitle="One Halted VM for a KubeVirt InfraEnv, on the oldest KV cluster of the zone that fits, "
+             "with the zone held by one run at a time (AD32, AD33). A create that fails moves on to "
+             "the next cluster. Started by add-server-to-mce for a VM pool (AD29).",
+    look="v2",
+    mode_labels=("Create", "Lands on the oldest", "Moves on"),
+    tags={"BM": "lands", "VM": "moves on"},
+    nodes={"par":  NK(20, 30, "add-server-to-mce", "the parent run (AD29)", "orch"),
+           "tmp":  NK(385, 30, "Temporal", "create-vm-<mce>_<infraEnv>_<slot>", "orch", 230),
+           "day1": NK(780, 30, "day1 repo", "the zone's KV clusters", "svc"),
+           "lock": NK(20, 150, "kv-zone-lock", "one run per site and zone", "orch", 180),
+           "dsv":  NK(20, 270, "delete-stray-vm", "an abandoned child", "orch", 180),
+           "kva":  NK(310, 230, "worker · cluster a", "the oldest", "svc"),
+           "vma":  NK(310, 340, "VirtualMachine", "on cluster a", "machine"),
+           "kvb":  NK(550, 230, "worker · cluster b", "the next", "svc"),
+           "vmb":  NK(550, 340, "VirtualMachine", "on cluster b", "machine"),
+           "kvr":  NK(790, 230, "kubevirt-redfish", "exposes the VM", "svc", 190),
+           "scan": NK(790, 350, "server-scan", "lists it by name", "svc", 190)},
+    group=[{"x": 300, "y": 200, "w": 220, "h": 200, "label": "KV CLUSTER a"},
+           {"x": 540, "y": 200, "w": 220, "h": 200, "label": "KV CLUSTER b"}],
+    steps=[
+      ("par","tmp","both","Start the child","create-vm-&lt;mce&gt;_&lt;infraEnv&gt;_&lt;slot&gt;",
+       {"call":"child workflow create-vm-ocp4-prod-mce-five-a_c200-kv32-az1_1",
+        "send":"InfraEnv c200-kv32-az1 -> 32 vCPUs · 240 GiB (32 × 7.5) · zone az1 · site five",
+        "warn":"Built today: create-vm is started through its own route,\n"
+               "POST /workflows/vm-lifecycle/create-vm (procedure 21, §5)."}),
+
+      ("tmp","day1","both","List the zone's clusters","listing-kv-clusters · before the lock",
+       {"call":"day1 main, read by the cluster-lifecycle limb (it holds the day1 token)",
+        "recv":"ocp4-prod-kv-five-az1-a, ocp4-prod-kv-five-az1-b   (oldest first)\n"
+               "the placement buffer",
+        "warn":"Read before the lock, so the locked part stays short. None usable:\n"
+               "NoKvClusterError."}),
+
+      ("tmp","lock","both","Take the zone's lock","awaiting-zone-lock · one run at a time",
+       {"call":"signal the zone's kv-zone-lock run, or start it; wait for lock_granted",
+        "recv":"a lease of up to five minutes",
+        "warn":"Ten runs reading at once would all pick the same empty cluster, so only\n"
+               "the lock's holder reads figures and chooses (AD32). After 30 minutes in\n"
+               "line: KvZoneLockTimeoutError."}),
+
+      ("tmp","kva","both","Read cluster a","choosing-kv-cluster · oldest first",
+       {"call":"figures from the worker inside ocp4-prod-kv-five-az1-a, on its own queue",
+        "recv":"per node: allocatable and requested CPU and memory, Halted VMs counted",
+        "warn":"It fits when a node has room for the VM's CPU and memory and the cluster\n"
+               "stays within 1 − buffer. The scan stops at the first that fits (AD33)."}),
+
+      ("kva","vma","BM","Create the VM on a","creating-vm · Halted, no MAC requested",
+       {"call":"the worker creates kubevirt.io/v1 VirtualMachine, Halted",
+        "send":"name: ocp-c200-kv32-five-k7q2m9xd   (serial drawn by the worker)\n"
+               "MAC: assigned by KubeMacPool\n"
+               "labels: redbull.io/created-by: <run id> · redfish-enabled: \"true\"",
+        "recv":"the VM object exists",
+        "warn":"A taken name is drawn again, up to 3 times. The worker creates nothing\n"
+               "after the create's deadline: 90 seconds, or the lease's end."}),
+
+      ("kva","kva","VM","Create on a fails","an outage, or a worker gone",
+       {"call":"the create on ocp4-prod-kv-five-az1-a fails, retried until its deadline",
+        "warn":"The run carries on to the next cluster (the operator, 2026-11-24)."}),
+
+      ("tmp","kva","VM","Did it land on a?","checking-kv-cluster · after the deadline",
+       {"call":"ask cluster a for a VM labelled redbull.io/created-by: <run id>",
+        "recv":"a VM there: the run keeps it.   none: clean.   no answer: unknown",
+        "warn":"Asked after the create's deadline, so nothing of the run can still land\n"
+               "there while the run moves on."}),
+
+      ("tmp","dsv","VM","Clean up later","cluster a did not answer",
+       {"call":"start delete-stray-vm-ocp4-prod-kv-five-az1-a-<run id> as an abandoned child",
+        "warn":"It deletes any VM of the run on cluster a once the cluster answers\n"
+               "(procedure 22). The run moves on meanwhile."}),
+
+      ("tmp","kvb","VM","Read cluster b","the next cluster",
+       {"call":"figures from the worker inside ocp4-prod-kv-five-az1-b",
+        "recv":"fits"}),
+
+      ("kvb","vmb","VM","Create the VM on b","creating-vm · Halted, no MAC requested",
+       {"call":"the worker creates kubevirt.io/v1 VirtualMachine, Halted",
+        "send":"name: ocp-c200-kv32-five-k7q2m9xd · MAC from KubeMacPool\n"
+               "labels: redbull.io/created-by: <run id> · redfish-enabled: \"true\"",
+        "recv":"the VM object exists"}),
+
+      ("tmp","lock","both","Release the lock","releasing-zone-lock · the VM object exists",
+       {"call":"release the zone's kv-zone-lock",
+        "warn":"The next run's figures already count this VM, as a stopped VM: nothing\n"
+               "is remembered between runs."}),
+
+      ("vma","vma","BM","Root disk bound","awaiting-root-disk · outside the lock",
+       {"call":"wait for the root disk's DataVolume: Succeeded and bound, the VM admitted",
+        "warn":"Up to 10 minutes, then VmRootDiskNotBoundError: the run deletes its own\n"
+               "VM by its run-id label (removing-vm) and fails."}),
+
+      ("vmb","vmb","VM","Root disk bound","awaiting-root-disk · outside the lock",
+       {"call":"wait for the root disk's DataVolume: Succeeded and bound, the VM admitted"}),
+
+      ("vma","kvr","BM","Exposed as Redfish","kubevirt-redfish",
+       {"call":"kubevirt-redfish exposes the VM labelled redfish-enabled as a Redfish system"}),
+
+      ("vmb","kvr","VM","Exposed as Redfish","kubevirt-redfish",
+       {"call":"kubevirt-redfish exposes the VM labelled redfish-enabled as a Redfish system"}),
+
+      ("kvr","scan","both","Listed in server-scan","under its name",
+       {"recv":"ocp-c200-kv32-five-k7q2m9xd, available",
+        "warn":"The serial is also the VM's SMBIOS serial, so the Agent's inventory\n"
+               "reports the serial the name carries."}),
+
+      ("tmp","par","both","Hand the VM to the parent","completed · name, MAC, cluster",
+       {"recv":"ocp-c200-kv32-five-k7q2m9xd · its MAC · its KV cluster · the placement table",
+        "warn":"The parent installs exactly that VM (procedure 01, from step 4)."}),
+
+      ("dsv","kva","VM","Delete the stray","later, when cluster a answers",
+       {"call":"delete_vm_on_cluster on cluster a's queue, by the run-id label, in every namespace",
+        "recv":"deleted: true, or false when the create had never landed",
+        "warn":"So a run never keeps two VMs: a stray stays Halted and unused until it is\n"
+               "deleted."}),
+    ])
+
+WORKFLOWS["22-delete-vm"] = dict(
+    title="22 :: Delete VM",
+    subtitle="A VM is deleted by its owner label, redbull.io/created-by, through the worker inside its "
+             "KV cluster: as the last step of remove-server-from-mce (AD23, AD36), or by "
+             "delete-stray-vm for a VM a create left behind.",
+    look="v2",
+    mode_labels=("Started by", "remove-server-from-mce", "create-vm (stray)"),
+    tags={"BM": "removal", "VM": "stray"},
+    nodes={"cvm":  NK(20, 30, "create-vm", "moved on from a cluster", "orch"),
+           "dsv":  NK(20, 130, "delete-stray-vm", "an abandoned child", "orch"),
+           "rsm":  NK(20, 260, "remove-server-from-mce", "its last step (AD36)", "orch"),
+           "hubw": NK(330, 260, "server-lifecycle worker", "the MCE", "hub"),
+           "bmh":  NK(330, 380, "BareMetalHost", "kv-cluster · created-by", "hub"),
+           "kvw":  NK(600, 130, "KV cluster worker", "the VM's own cluster", "svc"),
+           "vm":   NK(600, 260, "VirtualMachine", "and its root disk", "machine"),
+           "kvr":  NK(820, 260, "kubevirt-redfish", "drops the system", "svc", 160),
+           "scan": NK(820, 380, "server-scan", "drops the server", "svc", 160),
+           "fig":  NK(600, 420, "Cluster figures", "placement · KV Capacity", "svc")},
+    group=[{"x": 315, "y": 232, "w": 230, "h": 210, "label": "MCE HUB"},
+           {"x": 585, "y": 100, "w": 230, "h": 222, "label": "KV CLUSTER"}],
+    steps=[
+      ("rsm","hubw","BM","The removal runs","remove-server-from-mce-&lt;server&gt;",
+       {"call":"remove-server-from-mce-ocp-c200-kv32-five-k7q2m9xd, on the MCE's queue",
+        "warn":"Started by the Inventory Controller for a used Agent (AD34), by\n"
+               "uninstall-server-from-hc, by a cancelled install, or by an operator."}),
+
+      ("hubw","bmh","BM","Read the labels","inspecting · before the host goes",
+       {"call":"GET metal3.io BareMetalHost ocp-c200-kv32-five-k7q2m9xd",
+        "recv":"redbull.io/kv-cluster: ocp4-prod-kv-five-az1-a\n"
+               "redbull.io/created-by: <the create-vm run id>",
+        "warn":"Read in the first step, because the host is deleted later in the run.\n\n"
+               "Built today: these labels on the BareMetalHost are still to be built\n"
+               "(naming convention, open item 5)."}),
+
+      ("hubw","hubw","BM","Host, NMState, Agent removed","phases 3 to 6 of procedure 02",
+       {"call":"delete the NMStateConfig and the BareMetalHost (metal3 powers the VM off\n"
+               "through kubevirt-redfish), delete the Agent, clear the PXE entries, verify",
+        "warn":"The VM is stopped, and nothing on the MCE refers to it any more."}),
+
+      ("hubw","kvw","BM","Delete the VM","deleting-vm · on the cluster's own queue",
+       {"call":"delete_vm_on_cluster -> queue of ocp4-prod-kv-five-az1-a's worker",
+        "send":"every VM labelled redbull.io/created-by: <run id>, in every namespace",
+        "warn":"Retried until the cluster answers.\n\n"
+               "Built today: this step is still to be built (procedure 02, §6)."}),
+
+      ("cvm","dsv","VM","Start the cleanup","cluster a did not answer",
+       {"call":"start delete-stray-vm-ocp4-prod-kv-five-az1-a-<run id>, abandoned",
+        "warn":"create-vm moved on to the next cluster; this child removes any VM of the\n"
+               "run left on cluster a (procedure 21, checking-kv-cluster). Built."}),
+
+      ("dsv","kvw","VM","Delete by run id","retried until the cluster answers",
+       {"call":"delete_vm_on_cluster on cluster a's queue, by the run-id label, in every namespace",
+        "recv":"deleted: true, or false when the create had never landed",
+        "warn":"A refusal no retry can fix fails the run, naming the label to delete by\n"
+               "hand."}),
+
+      ("kvw","vm","both","VM deleted","with its root disk",
+       {"call":"DELETE kubevirt.io/v1 VirtualMachine, labelled redbull.io/created-by: <run id>",
+        "recv":"the VM and its root disk deleted",
+        "warn":"Only a VM carrying that run id: a hand-made VM, or another run's VM of\n"
+               "the same name, stays."}),
+
+      ("vm","kvr","both","Redfish system gone","kubevirt-redfish drops it",
+       {"call":"the Redfish system goes with the VM"}),
+
+      ("kvr","scan","both","Gone from server-scan","at its next collection",
+       {"recv":"the server leaves server-scan's list, so no draw can offer it"}),
+
+      ("vm","fig","both","Room given back","Halted VMs count as used",
+       {"warn":"create-vm's placement and the KV Capacity Controller both count Halted\n"
+               "VMs, so the room shows as soon as the VM is gone."}),
     ])
 
 WORKFLOWS["03-create-hosted-cluster"] = dict(

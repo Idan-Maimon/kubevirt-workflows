@@ -1,107 +1,118 @@
 # 02 :: Remove Server from MCE
 
-**Animation:** [`../animations/02-remove-server-from-mce.html`](../animations/02-remove-server-from-mce.html)
-
 **Interfaces:** [`00-interfaces.md`](00-interfaces.md) — exact endpoints, payloads and resource bodies
+**Animation:** [`../animations/02-remove-server-from-mce.html`](../animations/02-remove-server-from-mce.html)
+**Implementation:** [`remove_server_from_mce.py`](https://github.com/team-redbull/workflows/blob/main/workflow_domains/server_lifecycle/remove_server_from_mce.py) in `team-redbull/workflows`
 
 | | |
 |---|---|
-| **Trigger** | Inventory Controller, when a pool has been **above its ceiling** for the cooldown |
-| **Workflow id** | `remove-server-<infraenv>` — same pool key as [01](01-add-server-to-mce.md) |
-| **Runs on** | The hub's worker queue; the KV cluster's queue for the VM delete only |
-| **Scope** | Hub-agnostic and pool-agnostic, same as 01 |
-| **Removes** | One Agent per iteration, until the pool is back at target |
-
-> **This is not the scale-down path.** A tenant reducing a NodePool simply unbinds its agents,
-> which return to the pool. Nothing is destroyed. This workflow only runs when the pool is
-> *over* its ceiling and has stayed there through the cooldown. Wiring it to every scale-down
-> would destroy and rebuild constantly and defeat the watermark band entirely.
+| **Trigger** | The Inventory Controller, collecting a used Agent that is free again (AD34); `uninstall-server-from-hc`, as its child; a cancelled `add-server-to-mce`, rolling back; an operator |
+| **Workflow id** | `remove-server-from-mce-<server>`: one per server, so a repeated start returns 409 |
+| **Runs on** | The MCE's server-lifecycle queue; for a VM, the queue of the worker inside its KV cluster |
+| **Scope** | Every MCE hub; bare metal and VMs alike |
+| **Removes** | One server's BareMetalHost, NMStateConfig, Agent and PXE entries; for a VM, the VM too |
 
 ---
 
 ## 1 :: Purpose
 
-Shrink a pool back to target by destroying surplus capacity. Destroying is the exception,
-triggered by a sustained surplus, not the normal response to a node being released.
+Take one server out of an MCE's inventory, so a machine that has served a cluster is never reused
+as it is (AD23). Bare metal goes back to server-scan, and the next install draws it and installs it
+from scratch. A VM is deleted as the run's last step ([22 :: Delete VM](22-delete-vm.md)), so one
+start covers both (AD36).
+
+The run covers a server that is inventory only. An Agent still bound to a cluster refuses the run
+before anything changes.
 
 ---
 
 ## 2 :: Inputs
 
-| Field | Type | Required | Notes |
-|---|---|---|---|
-| `hub` | str | ✅ | Canonical hub name |
-| `infra_env` | str | ✅ | The pool |
-| `namespace` | str | ✅ | Where the InfraEnv lives |
-| `pool_type` | enum | ✅ | `VM` or `BM` |
-| `target_total` | int | ✅ | Absolute desired size, same signal shape as 01 |
-| `kv_cluster` | str | VM only | Where the VM lives |
+`POST /workflows/server-lifecycle/remove-server-from-mce`
+
+| Field | Required | Notes |
+|---|---|---|
+| `server_name` | ✅ | The server, as server-scan and the BareMetalHost name it |
+| `mce_cluster` | ✅ | The MCE, by cluster name. It selects the worker queue and the PXE VM of the MCE's site |
+
+| Caller | When |
+|---|---|
+| Inventory Controller (R3) | A used Agent, labelled `redbull.io/claimed` or showing an unbind, is free again ([inventory-controller.md](../inventory-controller.md)) |
+| `uninstall-server-from-hc` | As its child, once the node has left the hosted cluster |
+| `add-server-to-mce` | A cancelled run that has already written to the MCE |
+| Operator | By name |
 
 ---
 
-## 3 :: Preconditions
-
-- The pool total exceeds the ceiling and has done for the full cooldown. The controller owns
-  that judgement; this workflow trusts the target it is given.
-- A worker is running on the hub's queue, and on the KV cluster's queue for a VM pool.
-
----
-
-## 4 :: Process flow
+## 3 :: Process flow
 
 | # | Phase | Runs on | Action | On failure |
 |---|---|---|---|---|
-| 1 | `selecting-victim` | hub queue | List Agents in the pool and pick one that is **unbound**. Prefer the longest idle. | None selectable → complete as a no-op |
-| 2 | `confirming-unbound` | hub queue | **Re-read immediately before destroying.** A NodePool can claim an agent at any instant. | Became bound → skip it, pick another |
-| 3 | `detaching` | hub queue | Annotate the BareMetalHost detached | Retry |
-| 4 | `deleting-nmstate` | hub queue | Delete the NMStateConfig | 404 is success |
-| 5 | `deleting-bmh` | hub queue | Delete the BareMetalHost | 404 is success |
-| 6 | `clearing-finalizer` | hub queue | Bounded wait, then clear **only** the `baremetalhost.metal3.io` finalizer | Retry |
-| 7 | `deleting-secret` | hub queue | Delete the BMC Secret | 404 is success |
-| 8 | `verifying` | hub queue | Confirm all three are gone | Anything survives → retryable failure |
-| 9 | `unmapping-pxe` | hub queue | **IPMI only.** Remove the boot MAC mapping | 404 is success |
-| 10a | `deleting-vm` | **KV queue** | **VM only.** Delete the VM, releasing hypervisor CPU, memory and storage | Retry |
-| 10b | `releasing-server` | hub queue | **BM only.** Release the server-scan reservation if this run holds one | See note below |
-| 11 | — | — | Re-read total. Still above target? Loop. Else complete. | |
+| 1 | `inspecting` | MCE queue | Read the BareMetalHost, the NMStateConfig and the Agents matched to the host, by BMAC's `bmh` label or by any MAC of the machine, from either resource or from server-scan. For a VM, read the BareMetalHost's `redbull.io/kv-cluster` and `redbull.io/created-by` now, before the host is deleted | Nothing found at all: success, nothing to do |
+| 2 | Refusal | MCE queue | An Agent bound to a cluster (`spec.clusterDeploymentName`) ends the run with `AgentBoundToClusterError` | Nothing has changed |
+| 3 | `removing-host` | MCE queue | Delete the NMStateConfig and the BareMetalHost, re-checking first that no Agent is bound. metal3 deprovisions the deleted host: it powers the host off through its BMC (a VM through kubevirt-redfish), deletes its Ironic node, and only then releases its finalizer | |
+| 4 | `awaiting-bmh-deletion` | MCE queue | Read the BareMetalHost every 15 seconds until metal3 releases it, then delete its BMC Secret | After 15 minutes, `BmhDeletionTimeoutError` with the Agent untouched; usually a BMC that is not answering |
+| 5 | `removing-agent`, `removing-pxe-boot` | MCE queue | Delete the Agent, re-checked as unbound right before. Clear every MAC of the host from the PXE VM of the MCE's site, keeping any MAC that points at another MCE's boot entry | The PXE cleanup is best effort: a failure is reported in `pxe_failed`, and the removal completes |
+| 6 | `verifying` | MCE queue | Inspect again until no Agent, BareMetalHost or NMStateConfig is left | `ServerStillPresentError`, naming what is left |
+| 7 | `deleting-vm` | KV cluster's worker | **VMs only.** Delete the VM on the KV cluster named by `redbull.io/kv-cluster`, found by its `redbull.io/created-by` label ([22](22-delete-vm.md)) | Retried until the cluster answers |
 
-### Step order is load-bearing
+### Why the Agent goes last
 
-Detach **before** delete. Metal3's finalizer will otherwise block forever trying to
-deprovision through a BMC that is no longer answering. This ordering was learned
-empirically; do not reorder it for tidiness.
+The host is still running the discovery image, and its agent registers again within a minute once
+its Agent disappears. So the host is powered off first. metal3's own delete does that: a
+BareMetalHost that is really gone means a host powered off and an Ironic node deleted.
 
-### A note on returning a bare-metal machine
+### Why metal3 is left to finish
 
-There is **no endpoint that marks a server available**. That field is written only by the
-per-hub status job, which runs every fifteen minutes and notices the Agent has gone. So
-removal is: tear down, release any lock, and let the job observe. Do not try to push the
-state.
+The run deletes the BareMetalHost and waits, with no separate power-off and no finalizer dropped.
+metal3 ignores `spec.online` while a deploy is in progress, and a finalizer dropped early cut metal3
+off mid-way and left an orphaned Ironic node forcing a stale power state every minute.
+
+### The lock stays with its holder
+
+The run ends at the check, leaving server-scan's install lock to whoever holds it.
+`uninstall-server-from-hc` releases its own after this run completes, a cancelled
+`add-server-to-mce` releases its own in its rollback, and a removal started alone leaves any lock to
+its TTL.
 
 ---
 
-## 5 :: What this must never do
+## 4 :: Idempotency
 
-| | |
+- One running workflow per server: a repeated start returns 409.
+- A run that finds nothing succeeds, so a re-run after a partial removal finishes the job.
+- Every delete is re-checked against a bound Agent right before it is made.
+- A VM is deleted only when it carries the `redbull.io/created-by` label read from its
+  BareMetalHost, so a hand-made VM, or another run's VM of the same name, stays.
+
+---
+
+## 5 :: Outputs
+
+| Field | Notes |
 |---|---|
-| Destroy a **bound** agent | It is carrying a tenant workload |
-| Fire on a tenant scale-down | That is a return to the pool, not a surplus |
-| Destroy below target | The target is a floor as well as a ceiling |
-| Count a VM mid-scrub as spare | It ran a tenant OS and its disk is not yet reset |
+| Removed | What was deleted: BareMetalHost, NMStateConfig, Secret, Agents |
+| `pxe_kept`, `pxe_failed` | MACs left on the PXE VM because they belong to another MCE, and cleanups that failed |
+| VM | For a VM: the KV cluster and the VM deleted |
 
 ---
 
-## 6 :: Idempotency
+## 6 :: Built today vs. the architecture
 
-Every delete treats a missing object as success. The verification step, not the delete
-calls, decides whether the run is done. Re-running after a partial teardown converges.
+`team-redbull/workflows`, `main`, as of 2026-11-26:
+
+| # | Architecture | Built today |
+|---|---|---|
+| 1 | The Inventory Controller starts this run for every used Agent that is free again (AD34) | herzi starts only `add-server-to-mce`; the collector is a proposal (herzi PR #1) |
+| 2 | For a VM, the run deletes the VM as its last step (AD36) | Still to be built. Today the VM stays on its KV cluster, Halted: counted against its cluster's capacity, and still offered by server-scan while it keeps its `redfish-enabled` label |
+| 3 | A VM's BareMetalHost carries `redbull.io/kv-cluster` and `redbull.io/created-by` | Still to be built (naming convention, open item 5) |
+| 4 | Phases 1 to 6, as above | Built |
 
 ---
 
 ## 7 :: Open questions
 
-1. Does releasing a tenant's VM reset its disk, and does it stop being a registered Agent
-   while that happens? If a scrubbing VM lingers as an unbound Agent, the next cluster to
-   claim it gets the previous tenant's data. **This is the one open item that is a
-   correctness issue rather than a design choice.**
-2. Victim selection when several are idle. Longest idle is the obvious default; placement
-   spread across hypervisors may be a better one for VM pools.
+1. **A VM whose BareMetalHost is already gone.** Its two labels went with it, so the run needs
+   another way to find the VM: by name across the site's KV clusters, or from server-scan.
+2. **Wiping bare metal.** Reinstalling overwrites the install disk only; other disks keep their
+   data (procedure 19, D5).

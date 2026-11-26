@@ -72,12 +72,32 @@
   .edge.hot{stroke:var(--accent);stroke-width:2.5}
   .elab{fill:var(--accent);font-size:11.5px;font-weight:500}
   #dot{fill:var(--accent);filter:drop-shadow(0 0 6px var(--accent))}
+
+  #svg{height:470px}
+  .node text{font-size:14px}
+  .node .kbar,.node.hot .kbar,.node.done .kbar{stroke:none}
+  .node.k-actor .kbar{fill:#3ecf8e} .node.k-orch .kbar{fill:#4da3ff}
+  .node.k-svc .kbar{fill:#58c7d8}   .node.k-hub .kbar{fill:#b57bff}
+  .node.k-machine .kbar{fill:#e8b339}
+  .edge.trail{stroke:#4da3ff;stroke-opacity:.25;stroke-width:1.5;stroke-dasharray:5 4}
+  .edge.hot{marker-end:url(#ah)}
+  .legend{display:flex;flex-wrap:wrap;gap:16px;margin-top:9px;font-size:11.5px;color:var(--dim)}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;
+            vertical-align:-1px}
 </style>
 </head>
 <body>
 <header>
   <h1>02 :: Remove Server from MCE</h1>
-  <div class="sub">Only runs when a pool has been <em>above</em> its ceiling for the cooldown. A tenant scaling down returns agents to the pool; it does not come here.</div>
+  <div class="sub">One start per server takes it out of an MCE's inventory, so a machine that has served a cluster is never reused as it is (AD23). Bare metal goes back to server-scan for a full reinstall; a VM is deleted as the last step (AD36). Where main differs today, the step says so (procedure 02, §6).</div>
+  <div class="legend">
+    <span><i style="background:#3ecf8e"></i>requester</span>
+    <span><i style="background:#4da3ff"></i>orchestration</span>
+    <span><i style="background:#58c7d8"></i>service</span>
+    <span><i style="background:#b57bff"></i>MCE object</span>
+    <span><i style="background:#e8b339"></i>machine</span>
+    <span><i style="border:1px dashed #4da3ff"></i>path so far</span>
+  </div>
 </header>
 
 <div class="wrap">
@@ -110,281 +130,287 @@
 
 <script>
 const NODES = {
+  "ctl": {
+    "x": 20,
+    "y": 30,
+    "w": 200,
+    "h": 50,
+    "t": "Inventory Controller",
+    "s": "collects used Agents",
+    "k": "actor"
+  },
   "tmp": {
-    "x": 400,
-    "y": 16,
-    "w": 210,
-    "h": 46,
+    "x": 385,
+    "y": 30,
+    "w": 230,
+    "h": 50,
     "t": "Temporal",
-    "s": "one run per machine"
-  },
-  "scan": {
-    "x": 815,
-    "y": 16,
-    "w": 165,
-    "h": 46,
-    "t": "server-scan",
-    "s": "fleet inventory"
-  },
-  "kvw": {
-    "x": 812,
-    "y": 120,
-    "w": 156,
-    "h": 42,
-    "t": "KV worker",
-    "s": "PLANNED, same pattern"
-  },
-  "vm": {
-    "x": 812,
-    "y": 176,
-    "w": 156,
-    "h": 42,
-    "t": "VirtualMachine",
-    "s": "destroyed"
+    "s": "remove-server-from-mce-<server>",
+    "k": "orch"
   },
   "pxe": {
-    "x": 20,
-    "y": 252,
-    "w": 165,
-    "h": 46,
-    "t": "PXE Host",
-    "s": "per site"
+    "x": 780,
+    "y": 160,
+    "w": 200,
+    "h": 50,
+    "t": "PXE VM",
+    "s": "the MCE's site",
+    "k": "svc"
   },
   "hubw": {
-    "x": 265,
-    "y": 292,
-    "w": 215,
-    "h": 48,
+    "x": 400,
+    "y": 160,
+    "w": 200,
+    "h": 50,
     "t": "server-lifecycle worker",
-    "s": "the hub's own SA"
+    "s": "activities on the MCE",
+    "k": "hub"
   },
-  "ctl": {
-    "x": 505,
-    "y": 292,
-    "w": 240,
-    "h": 48,
-    "t": "Inventory Controller",
-    "s": "in-cluster"
+  "bmh": {
+    "x": 270,
+    "y": 280,
+    "w": 200,
+    "h": 50,
+    "t": "BMH \u00b7 NMState \u00b7 Secret",
+    "s": "the host's objects",
+    "k": "hub"
   },
   "agt": {
-    "x": 265,
-    "y": 372,
-    "w": 215,
-    "h": 46,
+    "x": 520,
+    "y": 280,
+    "w": 180,
+    "h": 50,
     "t": "Agent",
-    "s": "must be unbound"
+    "s": "unbound \u00b7 used",
+    "k": "hub"
   },
-  "res": {
-    "x": 505,
-    "y": 372,
-    "w": 240,
-    "h": 46,
-    "t": "BMH + NMState",
-    "s": "+ BMC Secret"
+  "m3": {
+    "x": 270,
+    "y": 410,
+    "w": 200,
+    "h": 50,
+    "t": "metal3 \u00b7 Ironic",
+    "s": "deprovisions the host",
+    "k": "hub"
   },
-  "gone": {
-    "x": 350,
-    "y": 452,
-    "w": 300,
-    "h": 46,
-    "t": "Verified gone",
-    "s": "nothing survives"
+  "kvw": {
+    "x": 780,
+    "y": 330,
+    "w": 200,
+    "h": 50,
+    "t": "KV cluster worker",
+    "s": "the VM's own cluster",
+    "k": "svc"
+  },
+  "vm": {
+    "x": 780,
+    "y": 440,
+    "w": 200,
+    "h": 50,
+    "t": "VirtualMachine",
+    "s": "found by its run id",
+    "k": "machine"
   }
 };
 const GROUPS = [
   {
-    "x": 795,
-    "y": 86,
-    "w": 190,
-    "h": 150,
-    "label": "KV CLUSTER"
+    "x": 250,
+    "y": 130,
+    "w": 505,
+    "h": 345,
+    "label": "MCE HUB"
   },
   {
-    "x": 240,
-    "y": 250,
-    "w": 530,
-    "h": 290,
-    "label": "MCE HUB"
+    "x": 765,
+    "y": 300,
+    "w": 230,
+    "h": 210,
+    "label": "KV CLUSTER \u00b7 VMs"
   }
 ];
 const RAW   = [
   [
     "ctl",
-    "agt",
+    "ctl",
     "both",
-    "Count the pool",
-    "Same read as adding. The controller looks.",
+    "A used Agent is free",
+    "R3 \u00b7 unbound, labelled claimed",
     {
-      "call": "LIST agent-install.openshift.io/v1beta1 Agent",
-      "recv": "assigned = 20,  spare = 6,  total = 26",
-      "warn": "A machine being torn down is STILL an Agent until the teardown finishes, so\nit is counted here. That is why the next step exists."
+      "call": "the controller's pass: Agents labelled redbull.io/claimed, unbound, unchanged for a grace period",
+      "recv": "ocp-c200-mtl-five-fch2145v1ab: free again after a scale-down",
+      "warn": "Others start the same run: uninstall-server-from-hc as its child, a\ncancelled add-server-to-mce in its rollback, an operator.\n\nBuilt today: herzi's collector is still to be built (herzi PR #1)."
     }
   ],
   [
     "ctl",
     "tmp",
     "both",
-    "Ask which removals are open",
-    "The mirror of the in-flight problem.",
+    "Start the removal",
+    "One start per server.",
     {
-      "call": "Temporal: list open workflows matching remove-server-*",
-      "recv": "map each run's machine back to a pool, by its name",
-      "warn": "Without this the controller over-removes. A removal in flight leaves its\nagent visible as spare, so the next pass sees the same surplus and picks a\nDIFFERENT machine to remove. Two minutes later, another.\n\nHarder than the add side: a removal id is remove-server-<machine>, keyed on\nthe machine rather than the pool, so you cannot match by id pattern. The\nmapping is by machine name."
-    }
-  ],
-  [
-    "ctl",
-    "ctl",
-    "both",
-    "Compute the surplus",
-    "Above the ceiling, and held there.",
-    {
-      "call": "no call \u2014 the controller's own arithmetic",
-      "send": "ceiling = demand + high      = 20 + 4 = 24\nsurplus = total - removing - ceiling\n        = 26    - 0        - 24       = 2",
-      "warn": "Only fires above the CEILING, not below the target, and only after the\nsurplus has persisted for the whole cooldown. Grow fast, shrink slowly:\nshrinking late wastes a little capacity, growing late stalls a tenant.\n\nNever shrink below target. The target is a floor as well as a ceiling."
-    }
-  ],
-  [
-    "ctl",
-    "agt",
-    "both",
-    "Pick the victims",
-    "Unbound only, longest idle first.",
-    {
-      "call": "filter the Agents already listed",
-      "recv": "spec.clusterDeploymentName empty, and no removal already open for it",
-      "warn": "Never pick a bound agent: it is carrying a tenant workload. Never pick one\nmid-scrub either, which is the same rule that keeps a scrubbing machine out\nof the spare count."
-    }
-  ],
-  [
-    "ctl",
-    "tmp",
-    "both",
-    "Start one run per machine",
-    "No slots needed here.",
-    {
-      "call": "POST /workflows/server-lifecycle/remove-server   (once per machine)",
-      "send": "{ \"server_name\": \"ocp-cisco-m6-bat-yam-64c-512gb-J3K9L2\",\n  \"mce_cluster\": \"ocp4-prod-mce-bat-yam\" }",
-      "recv": "202 per call, or 409 if a removal for that machine is already in flight",
-      "warn": "Unlike adding, the id is remove-server-<machine>, so N removals are N\ndistinct ids and run in parallel by construction. No slot mechanism is\nneeded, and a repeat for the same machine deduplicates for free.\n\nThe distinct prefix also keeps a removal from colliding with an install of\nthe same machine."
+      "call": "POST /workflows/server-lifecycle/remove-server-from-mce",
+      "send": "{ \"server_name\": \"ocp-c200-mtl-five-fch2145v1ab\",\n  \"mce_cluster\": \"ocp4-prod-mce-five-a\" }",
+      "recv": "202. The workflow id is the server, so a repeated start returns 409"
     }
   ],
   [
     "tmp",
     "hubw",
     "both",
-    "Each run dispatches to the hub",
-    "From here on, one run, one machine.",
+    "Hand the run to the MCE",
+    "Every call is an activity there.",
     {
-      "call": "ExecuteActivity  ->  queue server-lifecycle-activity-ocp4-prod-mce-bat-yam",
-      "warn": "The workflow holds no credentials and makes no calls; it is replayed from\nhistory and must be deterministic. Every arrow below starts at a worker."
+      "call": "ExecuteActivity -> queue server-lifecycle-activity-ocp4-prod-mce-five-a",
+      "warn": "The workflow holds no credentials; the worker inside the MCE makes every\ncall to the hub."
+    }
+  ],
+  [
+    "hubw",
+    "bmh",
+    "both",
+    "Inspect the host",
+    "inspecting \u00b7 BMH, NMState, Agents",
+    {
+      "call": "GET the BareMetalHost, the NMStateConfig and the Agents matched to the host",
+      "recv": "matched by BMAC's bmh label, or by any MAC of the machine, from either\nresource or from server-scan",
+      "warn": "Nothing found at all: the run succeeds with nothing to do.\nFor a VM, the BareMetalHost's redbull.io/kv-cluster and\nredbull.io/created-by are read now, before the host is deleted."
     }
   ],
   [
     "hubw",
     "agt",
     "both",
-    "Re-check it is unbound",
-    "The race, and the last chance to catch it.",
+    "Refuse a bound Agent",
+    "spec.clusterDeploymentName",
     {
-      "call": "GET agent-install.openshift.io/v1beta1 Agent/<name>",
-      "recv": "spec.clusterDeploymentName must STILL be empty",
-      "warn": "Read it again immediately before the destructive step. The controller\nchose this machine seconds or minutes ago; a NodePool can claim it at any\ninstant in between."
+      "call": "check each Agent's spec.clusterDeploymentName",
+      "recv": "unbound: carry on.   bound: AgentBoundToClusterError, nothing changed",
+      "warn": "The run covers a server that is inventory only. The controller collects\nunbound Agents, so its runs pass this check."
     }
   ],
   [
     "hubw",
-    "res",
+    "bmh",
     "both",
-    "Detach the host",
-    "Before any delete. This one is load-bearing.",
+    "Delete NMState and BMH",
+    "removing-host \u00b7 metal3 takes over",
     {
-      "call": "PATCH metal3.io/v1alpha1 BareMetalHost/<name>",
-      "send": "metadata.annotations:\n  baremetalhost.metal3.io/detached: \"\"",
-      "warn": "Delete first and Metal3's finalizer tries to deprovision through a BMC that\nis no longer answering, and blocks forever. Measured at 14 hours with no\nerror reported."
+      "call": "DELETE NMStateConfig \u00b7 DELETE metal3.io BareMetalHost   (no Agent bound, re-checked)",
+      "warn": "No separate power-off and no finalizer dropped: metal3's own delete\ndeprovisions the host, and a finalizer dropped early once orphaned Ironic\nnodes that kept forcing a stale power state."
+    }
+  ],
+  [
+    "bmh",
+    "m3",
+    "both",
+    "metal3 deprovisions",
+    "on the BareMetalHost's delete",
+    {
+      "call": "metal3: deprovisioning -> powering off before delete -> deleting",
+      "warn": "metal3 releases its finalizer only once the host is off and its Ironic\nnode is deleted."
+    }
+  ],
+  [
+    "m3",
+    "m3",
+    "BM",
+    "Host powered off",
+    "through its BMC",
+    {
+      "call": "Ironic, through the BMC: power off",
+      "recv": "the host is off, so it can no longer boot the discovery image"
+    }
+  ],
+  [
+    "m3",
+    "vm",
+    "VM",
+    "VM powered off",
+    "through kubevirt-redfish",
+    {
+      "call": "Ironic, through kubevirt-redfish: power off",
+      "recv": "the VM is stopped on its KV cluster, its disk still in place"
     }
   ],
   [
     "hubw",
-    "res",
+    "bmh",
     "both",
-    "Delete NMState, BMH, Secret",
-    "In that order. A missing object is success.",
+    "Wait for the BMH to go",
+    "awaiting-bmh-deletion \u00b7 every 15 s",
     {
-      "call": "DELETE NMStateConfig, then BareMetalHost, then Secret",
-      "recv": "404 on any of them is success",
-      "warn": "A successful delete call does NOT mean the object is gone; finalizers can\nhold it. Confirming is the next two steps' job."
-    }
-  ],
-  [
-    "res",
-    "gone",
-    "both",
-    "Clear the one finalizer",
-    "Only metal3's. Never the whole list.",
-    {
-      "call": "PATCH BareMetalHost finalizers, after a bounded wait",
-      "send": "remove only: baremetalhost.metal3.io",
-      "warn": "Clearing the whole list strips finalizers belonging to other controllers and\nleaks whatever they were protecting."
+      "call": "GET the BareMetalHost every 15 seconds, up to 15 minutes; then DELETE its BMC Secret",
+      "warn": "Still there after 15 minutes: BmhDeletionTimeoutError, with the Agent\nuntouched. Usually a BMC that is not answering; a re-run waits for the\nsame delete."
     }
   ],
   [
     "hubw",
-    "gone",
+    "agt",
     "both",
-    "Verify all three gone",
-    "Verification ends the run, not the deletes.",
+    "Delete the Agent",
+    "removing-agent \u00b7 last",
     {
-      "call": "GET each of the three",
-      "recv": "all three must 404",
-      "warn": "The machine is NOT returned to inventory while a BareMetalHost still points\nat it."
+      "call": "DELETE agent-install.openshift.io/v1beta1 Agent   (re-checked as unbound)",
+      "warn": "Last, because a host still running discovery registers again within a\nminute once its Agent disappears."
     }
   ],
   [
     "hubw",
     "pxe",
-    "IPMI",
-    "Unmap the boot MAC",
-    "Mirror of the mapping on the way in.",
+    "both",
+    "Clear the PXE entries",
+    "removing-pxe-boot \u00b7 best effort",
     {
-      "call": "DELETE /pxe-map/<boot-mac>",
-      "recv": "404 is success",
-      "warn": "Only its own site's PXE host. A removal does not touch the others."
+      "call": "the PXE VM of the MCE's site: clear every MAC of the host",
+      "recv": "MACs pointing at another MCE's boot entry are kept (pxe_kept)",
+      "warn": "Best effort: a failure is reported in pxe_failed, and the removal\ncompletes."
+    }
+  ],
+  [
+    "hubw",
+    "hubw",
+    "both",
+    "Verify",
+    "verifying \u00b7 nothing left",
+    {
+      "call": "inspect again until no Agent, BareMetalHost or NMStateConfig is left",
+      "recv": "done, or ServerStillPresentError naming what is left"
+    }
+  ],
+  [
+    "tmp",
+    "kvw",
+    "VM",
+    "Delete the VM",
+    "deleting-vm \u00b7 on the cluster's own queue",
+    {
+      "call": "delete_vm_on_cluster -> queue of ocp4-prod-kv-five-az1-a's worker",
+      "send": "every VM labelled redbull.io/created-by: <run id>, in every namespace",
+      "warn": "The cluster comes from the BareMetalHost's redbull.io/kv-cluster, read in\nthe first step. Retried until the cluster answers (procedure 22).\n\nBuilt today: this step is still to be built (procedure 02, \u00a76)."
     }
   ],
   [
     "kvw",
     "vm",
     "VM",
-    "Delete the machine",
-    "On the KV cluster, by that cluster's worker.",
+    "VM and root disk gone",
+    "Room given back to the cluster.",
     {
-      "call": "DELETE kubevirt.io/v1 VirtualMachine",
-      "warn": "PLANNED. With no overcommit at the hypervisor layer this is what actually\nreturns the CPU and memory; until it runs they stay reserved for a guest\nthat no longer exists."
+      "call": "DELETE kubevirt.io/v1 VirtualMachine ocp-c200-kv32-five-k7q2m9xd",
+      "recv": "the VM and its root disk deleted",
+      "warn": "A Halted VM counts as used for placement and for the KV Capacity\nController, so the room shows as soon as it is gone."
     }
   ],
   [
-    "hubw",
-    "scan",
-    "both",
-    "Release the lock",
-    "And then wait, because you cannot push the rest.",
-    {
-      "call": "DELETE /servers/{id}/reservation",
-      "send": "{ \"holder\": \"remove-server\", \"workflow_id\": \"...\" }",
-      "warn": "There is NO endpoint that marks a machine available again. A status job on\nthe hub notices the Agent has gone, every 15 minutes, and sets it. Do not\ndesign a step that tries to push it."
-    }
-  ],
-  [
-    "gone",
+    "tmp",
     "ctl",
     "both",
-    "Next pass sees it",
-    "No parent is waiting. The loop is the controller.",
+    "Removal complete",
+    "One used Agent fewer.",
     {
-      "call": "nothing \u2014 the run has completed and exited",
-      "recv": "the controller's next pass, within 2 minutes, counts the pool again",
-      "warn": "Nothing owns convergence, deliberately. A failed removal leaves the surplus\nin place and the next pass notices. The evaluation cycle IS the retry."
+      "call": "the run completes",
+      "recv": "bare metal: back in server-scan, for the next install to draw and reinstall\na VM: deleted",
+      "warn": "server-scan's install lock stays with its holder: a caller holding one\nreleases it itself."
     }
   ]
 ];
@@ -418,7 +444,7 @@ const vis = s => s.b==="both" || s.b===mode || (s.b==="IPMI" && mode==="BM");
 const active = () => STEPS.map((s,i)=>i).filter(i=>vis(STEPS[i]));
 
 function drawStatic(){
-  svg.innerHTML="";
+  svg.innerHTML='<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4da3ff"/></marker></defs>';
   GROUPS.forEach(G=>{
     const g = el("g",{class:"group"});
     g.appendChild(el("rect",{x:G.x,y:G.y,width:G.w,height:G.h}));
@@ -430,6 +456,8 @@ function drawStatic(){
     const d=NODES[k];
     const n=el("g",{class:"node",id:"n_"+k});
     n.appendChild(el("rect",{x:d.x,y:d.y,width:d.w,height:d.h}));
+    if(d.k){ n.classList.add("k-"+d.k);
+      n.appendChild(el("rect",{x:d.x+1,y:d.y+9,width:4,height:d.h-18,rx:2,class:"kbar"})); }
     const t=el("text",{x:d.x+d.w/2,y:d.y+d.h/2-3,"text-anchor":"middle"});
     t.textContent=d.t;
     if(d.s){ const s=el("tspan",{x:d.x+d.w/2,dy:"15",class:"s"}); s.textContent=d.s;
@@ -439,6 +467,12 @@ function drawStatic(){
   svg.appendChild(el("circle",{id:"dot",r:7,opacity:0}));
 }
 
+function clip(n,tx,ty){ // where the line toward (tx,ty) leaves node n's box
+  const d=NODES[n], x=cx(n), y=cy(n), dx=tx-x, dy=ty-y;
+  const k=Math.min((d.w/2+4)/Math.max(Math.abs(dx),1e-6),
+                   (d.h/2+4)/Math.max(Math.abs(dy),1e-6));
+  return [x+dx*k, y+dy*k];
+}
 function path(a,b){
   if(a===b){ // self-loop: below the node when it sits near the top edge
     const d=NODES[a], x=cx(a);
@@ -447,7 +481,7 @@ function path(a,b){
     const y=d.y;
     return `M ${x-28} ${y} C ${x-40} ${y-46} ${x+40} ${y-46} ${x+28} ${y}`;
   }
-  const x1=cx(a), y1=cy(a), x2=cx(b), y2=cy(b);
+  const [x1,y1]=clip(a,cx(b),cy(b)), [x2,y2]=clip(b,cx(a),cy(a));
   const mx=(x1+x2)/2, my=(y1+y2)/2;
   const dx=x2-x1, dy=y2-y1, len=Math.hypot(dx,dy)||1;
   const bow=Math.min(46,len*0.12);
@@ -462,6 +496,8 @@ function render(){
   const act=active(), here=act.indexOf(idx);
   act.forEach((si,pos)=>{ if(here>=0 && pos<here)
     document.getElementById("n_"+STEPS[si].t)?.classList.add("done"); });
+  act.forEach((si,pos)=>{ if(here>=0 && pos<here){ const t=STEPS[si];
+    edges.appendChild(el("path",{class:"edge trail",d:path(t.f,t.t)})); } });
 
   if(idx>=0 && STEPS[idx]){
     const s=STEPS[idx];

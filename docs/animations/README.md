@@ -23,6 +23,8 @@ Base address: `https://idan-maimon.github.io/kubevirt-workflows/docs/animations/
 |---|---|---|
 | 01 | [Add Server to MCE](https://idan-maimon.github.io/kubevirt-workflows/docs/animations/01-add-server-to-mce.html) | [01](../procedures/01-add-server-to-mce.md) |
 | 02 | [Remove Server from MCE](https://idan-maimon.github.io/kubevirt-workflows/docs/animations/02-remove-server-from-mce.html) | [02](../procedures/02-remove-server-from-mce.md) |
+| 21 | [Create VM](https://idan-maimon.github.io/kubevirt-workflows/docs/animations/21-create-vm.html) | [21](../procedures/21-create-vm.md) |
+| 22 | [Delete VM](https://idan-maimon.github.io/kubevirt-workflows/docs/animations/22-delete-vm.html) | [22](../procedures/22-delete-vm.md) |
 
 ## Tenant clusters
 

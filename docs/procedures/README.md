@@ -48,12 +48,14 @@ check, are all things the code learned the hard way.
 
 | | Procedure | Trigger |
 |---|---|---|
-| 01 | [Add Server to MCE](01-add-server-to-mce.md) | Controller, pool below target |
-| 02 | [Remove Server from MCE](02-remove-server-from-mce.md) | Controller, pool above ceiling for the cooldown |
+| 01 | [Add Server to MCE](01-add-server-to-mce.md) | The Inventory Controller, for each machine a pool needs |
+| 02 | [Remove Server from MCE](02-remove-server-from-mce.md) | The Inventory Controller, collecting a used Agent; `uninstall-server-from-hc`; a cancelled install |
+| 21 | [Create VM](21-create-vm.md) | `add-server-to-mce`, for a VM pool (AD29) |
+| 22 | [Delete VM](22-delete-vm.md) | `remove-server-from-mce`, for a VM server; `create-vm`, for a stray |
 
-One workflow each for virtual and bare metal. Only the first step differs: bare metal
-**draws** an existing machine, virtual **creates** one. Everything after is identical
-because both end as an Agent.
+One workflow for virtual and bare metal (AD29). A VM pool first **creates** its VM (21), where
+bare metal **draws** an existing machine, and a removal **deletes** a VM as its last step (22).
+Everything else is identical, because both end as an Agent.
 
 ## Tenant clusters
 

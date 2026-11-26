@@ -145,7 +145,7 @@ const NODES = {
     "w": 200,
     "h": 50,
     "t": "VirtualMachine",
-    "s": "Halted \u00b7 fixed MAC",
+    "s": "Halted \u00b7 MAC from KubeMacPool",
     "k": "machine"
   },
   "ctl": {
@@ -339,7 +339,7 @@ const RAW   = [
     {
       "call": "child workflow create-vm-ocp4-prod-mce-five-a_c200-kv32-az1_1",
       "send": "InfraEnv c200-kv32-az1: 32 vCPUs, zone az1",
-      "warn": "The zone's lock (AD32), then the first KV cluster that fits, in creation\norder (AD33).\n\nBuilt today: create-vm runs as its own workflow and ranks the zone's\nclusters by best fit. The child, the lock and first fit are still to be\nbuilt (procedure 01, \u00a78)."
+      "warn": "The zone's lock (AD32), then the oldest KV cluster that fits (AD33):\nprocedure 21.\n\nBuilt today: create-vm runs as its own workflow, started through\nPOST /workflows/vm-lifecycle/create-vm. The lock and the placement are\nbuilt; the child is still to be built (procedure 01, \u00a78)."
     }
   ],
   [
@@ -347,12 +347,12 @@ const RAW   = [
     "vm",
     "VM",
     "VM created, Halted",
-    "Fixed MAC \u00b7 kubevirt-redfish exposes it",
+    "KubeMacPool's MAC \u00b7 kubevirt-redfish exposes it",
     {
-      "call": "CREATE kubevirt.io/v1 VirtualMachine   on the chosen KV cluster",
-      "send": "name: ocp-c200-kv32-five-k7q2m9xd\nrunStrategy: Halted \u00b7 a fixed MAC \u00b7 label redfish-enabled: \"true\"",
+      "call": "CREATE kubevirt.io/v1 VirtualMachine   by the chosen KV cluster's worker",
+      "send": "name: ocp-c200-kv32-five-k7q2m9xd   (an 8-character serial)\nrunStrategy: Halted \u00b7 no MAC requested: KubeMacPool assigns it\nlabels: redbull.io/created-by: <run id> \u00b7 redfish-enabled: \"true\"",
       "recv": "the root disk bound; kubevirt-redfish exposes it as a Redfish system",
-      "warn": "Built today: VMs are named ocp-<infraenv>-<6 hex>, which a draw by\nflavor, size and site misses (procedure 01, \u00a78)."
+      "warn": "The serial is also the VM's SMBIOS serial, so the Agent's inventory\nreports the serial its name carries, as bare metal does."
     }
   ],
   [
@@ -425,8 +425,8 @@ const RAW   = [
     "creating-* \u00b7 labelled installed-by",
     {
       "call": "CREATE Secret \u00b7 metal3.io BareMetalHost \u00b7 NMStateConfig   (create-if-absent)",
-      "send": "BareMetalHost ocp-c200-mtl-five-fch2145v1ab\n  bootMACAddress: <bond member 1>   online: true\n  customDeploy: start_assisted_install\nlabels:\n  infraenvs.agent-install.openshift.io: c200-mtl-az1\n  redbull.io/installed-by: <this run's workflow id>",
-      "warn": "installed-by lets the controller count the machine once: in flight until\nits Agent exists, then as a free Agent. A VM's BareMetalHost points at\nits Redfish endpoint on kubevirt-redfish.\n\nBuilt today: the installed-by label is still to be built (procedure 01, \u00a78)."
+      "send": "BareMetalHost ocp-c200-mtl-five-fch2145v1ab\n  bootMACAddress: <bond member 1>   online: true\n  customDeploy: start_assisted_install\nlabels:\n  infraenvs.agent-install.openshift.io: c200-mtl-az1\n  redbull.io/installed-by: <this run's run id>   (AD37)",
+      "warn": "installed-by lets the controller count the machine once: in flight until\nits Agent exists, then as a free Agent. A VM's BareMetalHost points at\nits Redfish endpoint on kubevirt-redfish, and also carries\nredbull.io/kv-cluster and redbull.io/created-by for its later delete.\n\nBuilt today: these labels are still to be built (procedure 01, \u00a78)."
     }
   ],
   [
@@ -473,7 +473,7 @@ const RAW   = [
     "The next pass sees a free Agent.",
     {
       "call": "the controller's next pass lists the pool's Agents",
-      "recv": "the new Agent counts as free; its run, still holding the lock, is\nmatched through installed-by and counted once",
+      "recv": "the new Agent counts as free; its run, still holding the lock, is\nmatched by its run id through installed-by, and counted once",
       "warn": "A NodePool claims the Agent like any other. Once bound, the controller\nlabels it redbull.io/claimed (AD34)."
     }
   ]

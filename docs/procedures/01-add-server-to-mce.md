@@ -55,7 +55,7 @@ A request starts at most 20 runs, across 100 slots per pool.
 
 ## 3 :: Preconditions
 
-- The InfraEnv exists on the MCE with its four labels (naming convention §4).
+- The InfraEnv exists on the MCE with its four labels (naming convention §3).
 - The MCE has its inventory segment allocated.
 - A worker polls the MCE's server-lifecycle queue.
 - For a VM pool, the zone has a KV cluster with room, or a standby
@@ -70,7 +70,7 @@ A request starts at most 20 runs, across 100 slots per pool.
 The Inventory Controller works out each pool's need, `pending + spares − (free + inFlight)`, and
 orders that many runs with `count` (inventory-controller.md, R1). Each run takes one free slot, so
 the runs in flight are visible in Temporal by their ids. Every run labels what it creates
-`redbull.io/installed-by: <workflow id>`; once its Agent exists, the controller counts the machine
+`redbull.io/installed-by: <run id>` (AD37); once its Agent exists, the controller counts the machine
 once, as a free Agent.
 
 ### 4.2 Steps for one run
@@ -85,21 +85,21 @@ once, as a free Agent.
 | 6 | `checking-nmstateconfig` | MCE queue | Replace an NMStateConfig under the server's name that differs from this install | |
 | 7 | `registering-pxe-boot` | MCE queue | **IPMI only.** Map both bond MACs to the InfraEnv's boot entry, `<mce>/<infraenv>.ipxe`, on the site's PXE VM, before the BareMetalHost exists | Run fails |
 | 8 | `creating-nmstateconfig`, `publishing-pxe-boot` | MCE queue | **IPMI only.** Write the NMStateConfig first, wait up to 10 minutes for a discovery image that includes it, then publish its iPXE script as the boot entry | Rolled back, run fails |
-| 9 | `creating-secret`, `creating-baremetalhost`, `creating-nmstateconfig` | MCE queue | Write the BMC Secret, the BareMetalHost named after the server, and the NMStateConfig, each labelled `redbull.io/installed-by`. A VM's BareMetalHost points at its Redfish endpoint on kubevirt-redfish | |
+| 9 | `creating-secret`, `creating-baremetalhost`, `creating-nmstateconfig` | MCE queue | Write the BMC Secret, the BareMetalHost named after the server, and the NMStateConfig, each labelled `redbull.io/installed-by` with the run's id. A VM's BareMetalHost points at its Redfish endpoint on kubevirt-redfish and carries `redbull.io/kv-cluster` and `redbull.io/created-by`, so `remove-server-from-mce` can find and delete the VM ([22](22-delete-vm.md)) | |
 | 10 | `awaiting-agent` | MCE queue | Wait up to an hour for the Agent. It registers with the InfraEnv's labels | Rolled back (§5) |
 | 11 | `holding-server`, `awaiting-server-scan`, `releasing-lock` | MCE queue | Extend the lock to a day, read server-scan every 5 minutes, and release the lock once server-scan shows the server installed. A lock still held after the day expires, and the run completes | |
 
 ### 4.3 A VM pool (AD29)
 
 For an InfraEnv of size `kv<cpu>`, the run starts `create-vm-<mce>_<infraEnv>_<slot>` as a child
-before it draws:
+before it draws ([21 :: Create VM](21-create-vm.md)):
 
-1. `create-vm` takes the zone's lock (AD32) and places the VM on the first KV cluster that fits, in
-   creation order (AD33).
-2. It creates the VM Halted, with `<cpu>` vCPUs, the MAC KubeMacPool assigns it and the name
-   `ocp-<flavor>-kv<cpu>-<site>-<serial>`. kubevirt-redfish exposes it, and server-scan lists it.
+1. `create-vm` takes the zone's lock (AD32) and stops at the oldest KV cluster that fits (AD33).
+2. That cluster's worker creates the VM Halted, with `<cpu>` vCPUs, `<cpu> × 7.5` GiB, the MAC
+   KubeMacPool assigns, the name `ocp-<flavor>-kv<cpu>-<site>-<serial>` and the label
+   `redbull.io/created-by: <run id>`. kubevirt-redfish exposes it, and server-scan lists it. A
+   create that fails moves on to the next cluster.
 3. The parent installs exactly that VM, from step 4 on.
-
 ---
 
 ## 5 :: Failure handling
@@ -154,11 +154,12 @@ A cancelled run that has written to the MCE removes the server through a
 
 | # | Architecture | Built today |
 |---|---|---|
-| 1 | A VM pool's run builds its VM through a `create-vm` child, then installs that VM (AD29) | `create-vm` runs as its own workflow, and `add-server-to-mce` draws a VM pool from server-scan like any other pool |
-| 2 | The draw matches the zone, which server-scan holds from the ACI leaf (naming convention §3) | The draw matches flavor, size and site (`_POOL_LABELS`) |
-| 3 | Every run labels its objects `redbull.io/installed-by: <workflow id>` (inventory-controller.md) | Still to be built |
-| 4 | `create-vm` places a VM on the first KV cluster that fits, under the zone's lock (AD32, AD33) | `create-vm` ranks the zone's clusters by best-fit bin packing (`placement.py`). The lock and first fit are in the design on branch `docs/create-vm-placement` |
+| 1 | A VM pool's run builds its VM through a `create-vm` child, then installs that VM (AD29) | `create-vm` runs as its own workflow, started through `POST /workflows/vm-lifecycle/create-vm`, and `add-server-to-mce` draws a VM pool from server-scan like any other pool |
+| 2 | The draw matches the zone, which server-scan holds from the ACI leaf (naming convention §2) | The draw matches flavor, size and site (`_POOL_LABELS`) |
+| 3 | Every run labels its objects `redbull.io/installed-by: <run id>` (AD37) | Still to be built |
+| 4 | `create-vm` places a VM on the oldest KV cluster that fits, under the zone's lock (AD32, AD33) | Built: `kv_zone_lock.py` hands the zone to one run at a time, and `create-vm` stops at the oldest cluster that fits |
 | 5 | VM names `ocp-<flavor>-kv<cpu>-<site>-<serial>` (naming convention §1) | Built: `create-vm` names VMs this way, with an 8-character serial that is also the VM's SMBIOS serial, and reads the convention's InfraEnv names |
+| 6 | A VM's BareMetalHost carries `redbull.io/kv-cluster` and `redbull.io/created-by` (naming convention §3.1) | Still to be built (naming convention, open item 5) |
 
 ---
 

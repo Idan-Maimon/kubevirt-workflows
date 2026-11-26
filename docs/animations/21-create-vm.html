@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>21 :: Create VM</title>
+<style>
+  :root{
+    --bg:#0e0e11; --panel:#16161b; --line:#2c2c35; --ink:#e6e6ec; --dim:#8b8b99;
+    --accent:#4da3ff; --ok:#3ecf8e; --warn:#e8b339; --vm:#b57bff; --bm:#58c7d8;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:14px/1.5 "Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  header{padding:18px 24px 10px;border-bottom:1px solid var(--line)}
+  h1{margin:0;font-size:19px;font-weight:600;letter-spacing:.2px}
+  .sub{color:var(--dim);font-size:13px;margin-top:4px;max-width:900px}
+  .wrap{display:flex;align-items:stretch;min-height:700px}
+  .stage{flex:1;padding:14px 10px 12px 18px;display:flex;flex-direction:column;min-width:0}
+  #svg{width:100%;height:400px;flex:0 0 auto}
+  .detail{margin-top:10px;border:1px solid var(--line);border-radius:8px;background:#121217;
+          padding:11px 14px;flex:1;min-height:210px;max-height:350px;overflow:auto}
+  .dh{color:var(--dim);font-size:10.5px;text-transform:uppercase;letter-spacing:1.2px;
+      margin:0 0 8px;font-weight:600}
+  .k{color:var(--dim);font-size:10px;text-transform:uppercase;letter-spacing:1px;
+     display:block;margin:9px 0 3px}
+  .k:first-of-type{margin-top:0}
+  .detail pre{margin:0;white-space:pre-wrap;word-break:break-word;
+       font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+       font-size:11.5px;line-height:1.55;color:#cfd3da}
+  pre.call{color:var(--accent)}
+  pre.warn{color:var(--warn)}
+  .empty{color:var(--dim);font-style:italic;font-size:12.5px}
+  .side{width:366px;border-left:1px solid var(--line);background:var(--panel);
+        padding:14px 16px;overflow-y:auto;max-height:770px}
+  .side h2{font-size:12px;text-transform:uppercase;letter-spacing:1.2px;
+           color:var(--dim);margin:0 0 10px;font-weight:600}
+  .step{padding:8px 10px;border-radius:6px;cursor:pointer;display:flex;gap:9px;
+        border:1px solid transparent;margin-bottom:3px}
+  .step:hover{background:#1e1e25}
+  .step.on{background:#1b2838;border-color:var(--accent)}
+  .step.off{opacity:.3}
+  .num{color:var(--dim);font-variant-numeric:tabular-nums;min-width:22px;font-size:12px}
+  .step.on .num{color:var(--accent)}
+  .txt{flex:1}
+  .nm{font-weight:500;display:block}
+  .nt{color:var(--dim);font-size:12px;margin-top:2px;display:block}
+  .tag{font-size:10px;padding:1px 6px;border-radius:99px;border:1px solid var(--line);
+       color:var(--dim);align-self:flex-start;margin-top:2px}
+  .tag.VM{color:var(--vm);border-color:var(--vm)}
+  .tag.BM{color:var(--bm);border-color:var(--bm)}
+  .tag.IPMI{color:var(--warn);border-color:var(--warn)}
+  footer{display:flex;gap:10px;align-items:center;padding:12px 18px;
+         border-top:1px solid var(--line);flex-wrap:wrap}
+  button{background:#1e1e25;color:var(--ink);border:1px solid var(--line);
+         border-radius:6px;padding:7px 14px;cursor:pointer;font-size:13px}
+  button:hover{border-color:var(--accent)}
+  button.pri{background:var(--accent);border-color:var(--accent);color:#06121f;font-weight:600}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+  .seg button{border:0;border-radius:0}
+  .seg button.sel{background:#2a3a4d;color:var(--accent)}
+  .spacer{flex:1}
+  .caption{color:var(--dim);font-size:12px}
+  text{font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .node rect{fill:#191920;stroke:var(--line);stroke-width:1.5;rx:8}
+  .node.hot rect{stroke:var(--accent);stroke-width:2.5;fill:#1b2838}
+  .node.done rect{stroke:#2f5d48}
+  .node text{fill:var(--ink);font-size:13px;font-weight:500}
+  .node tspan.s{fill:var(--dim);font-size:11px;font-weight:400}
+  .group rect{fill:none;stroke:var(--line);stroke-dasharray:4 4;rx:10}
+  .group text{fill:var(--dim);font-size:11px;letter-spacing:1px}
+  .edge{stroke:#3a3a46;stroke-width:1.5;fill:none}
+  .edge.hot{stroke:var(--accent);stroke-width:2.5}
+  .elab{fill:var(--accent);font-size:11.5px;font-weight:500}
+  #dot{fill:var(--accent);filter:drop-shadow(0 0 6px var(--accent))}
+
+  #svg{height:470px}
+  .node text{font-size:14px}
+  .node .kbar,.node.hot .kbar,.node.done .kbar{stroke:none}
+  .node.k-actor .kbar{fill:#3ecf8e} .node.k-orch .kbar{fill:#4da3ff}
+  .node.k-svc .kbar{fill:#58c7d8}   .node.k-hub .kbar{fill:#b57bff}
+  .node.k-machine .kbar{fill:#e8b339}
+  .edge.trail{stroke:#4da3ff;stroke-opacity:.25;stroke-width:1.5;stroke-dasharray:5 4}
+  .edge.hot{marker-end:url(#ah)}
+  .legend{display:flex;flex-wrap:wrap;gap:16px;margin-top:9px;font-size:11.5px;color:var(--dim)}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;
+            vertical-align:-1px}
+</style>
+</head>
+<body>
+<header>
+  <h1>21 :: Create VM</h1>
+  <div class="sub">One Halted VM for a KubeVirt InfraEnv, on the oldest KV cluster of the zone that fits, with the zone held by one run at a time (AD32, AD33). A create that fails moves on to the next cluster. Started by add-server-to-mce for a VM pool (AD29).</div>
+  <div class="legend">
+    <span><i style="background:#3ecf8e"></i>requester</span>
+    <span><i style="background:#4da3ff"></i>orchestration</span>
+    <span><i style="background:#58c7d8"></i>service</span>
+    <span><i style="background:#b57bff"></i>MCE object</span>
+    <span><i style="background:#e8b339"></i>machine</span>
+    <span><i style="border:1px dashed #4da3ff"></i>path so far</span>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="stage">
+    <svg id="svg" viewBox="0 0 1000 560"
+         xmlns="http://www.w3.org/2000/svg" aria-label="Workflow diagram"></svg>
+    <div class="detail" id="detail"></div>
+  </div>
+  <aside class="side">
+    <h2>Steps</h2>
+    <div id="steps"></div>
+  </aside>
+</div>
+
+<footer>
+  <button class="pri" id="play">Play</button>
+  <button id="prev">Prev</button>
+  <button id="next">Next</button>
+  <button id="rst">Restart</button>
+  <span id="modes" style="display:none">
+    <span class="caption">Create</span>
+    <span class="seg">
+      <button id="mBM" class="sel">Lands on the oldest</button>
+      <button id="mVM">Moves on</button>
+    </span>
+  </span>
+  <div class="spacer"></div>
+  <span class="caption" id="cap"></span>
+</footer>
+
+<script>
+const NODES = {
+  "par": {
+    "x": 20,
+    "y": 30,
+    "w": 200,
+    "h": 50,
+    "t": "add-server-to-mce",
+    "s": "the parent run (AD29)",
+    "k": "orch"
+  },
+  "tmp": {
+    "x": 385,
+    "y": 30,
+    "w": 230,
+    "h": 50,
+    "t": "Temporal",
+    "s": "create-vm-<mce>_<infraEnv>_<slot>",
+    "k": "orch"
+  },
+  "day1": {
+    "x": 780,
+    "y": 30,
+    "w": 200,
+    "h": 50,
+    "t": "day1 repo",
+    "s": "the zone's KV clusters",
+    "k": "svc"
+  },
+  "lock": {
+    "x": 20,
+    "y": 150,
+    "w": 180,
+    "h": 50,
+    "t": "kv-zone-lock",
+    "s": "one run per site and zone",
+    "k": "orch"
+  },
+  "dsv": {
+    "x": 20,
+    "y": 270,
+    "w": 180,
+    "h": 50,
+    "t": "delete-stray-vm",
+    "s": "an abandoned child",
+    "k": "orch"
+  },
+  "kva": {
+    "x": 310,
+    "y": 230,
+    "w": 200,
+    "h": 50,
+    "t": "worker \u00b7 cluster a",
+    "s": "the oldest",
+    "k": "svc"
+  },
+  "vma": {
+    "x": 310,
+    "y": 340,
+    "w": 200,
+    "h": 50,
+    "t": "VirtualMachine",
+    "s": "on cluster a",
+    "k": "machine"
+  },
+  "kvb": {
+    "x": 550,
+    "y": 230,
+    "w": 200,
+    "h": 50,
+    "t": "worker \u00b7 cluster b",
+    "s": "the next",
+    "k": "svc"
+  },
+  "vmb": {
+    "x": 550,
+    "y": 340,
+    "w": 200,
+    "h": 50,
+    "t": "VirtualMachine",
+    "s": "on cluster b",
+    "k": "machine"
+  },
+  "kvr": {
+    "x": 790,
+    "y": 230,
+    "w": 190,
+    "h": 50,
+    "t": "kubevirt-redfish",
+    "s": "exposes the VM",
+    "k": "svc"
+  },
+  "scan": {
+    "x": 790,
+    "y": 350,
+    "w": 190,
+    "h": 50,
+    "t": "server-scan",
+    "s": "lists it by name",
+    "k": "svc"
+  }
+};
+const GROUPS = [
+  {
+    "x": 300,
+    "y": 200,
+    "w": 220,
+    "h": 200,
+    "label": "KV CLUSTER a"
+  },
+  {
+    "x": 540,
+    "y": 200,
+    "w": 220,
+    "h": 200,
+    "label": "KV CLUSTER b"
+  }
+];
+const RAW   = [
+  [
+    "par",
+    "tmp",
+    "both",
+    "Start the child",
+    "create-vm-&lt;mce&gt;_&lt;infraEnv&gt;_&lt;slot&gt;",
+    {
+      "call": "child workflow create-vm-ocp4-prod-mce-five-a_c200-kv32-az1_1",
+      "send": "InfraEnv c200-kv32-az1 -> 32 vCPUs \u00b7 240 GiB (32 \u00d7 7.5) \u00b7 zone az1 \u00b7 site five",
+      "warn": "Built today: create-vm is started through its own route,\nPOST /workflows/vm-lifecycle/create-vm (procedure 21, \u00a75)."
+    }
+  ],
+  [
+    "tmp",
+    "day1",
+    "both",
+    "List the zone's clusters",
+    "listing-kv-clusters \u00b7 before the lock",
+    {
+      "call": "day1 main, read by the cluster-lifecycle limb (it holds the day1 token)",
+      "recv": "ocp4-prod-kv-five-az1-a, ocp4-prod-kv-five-az1-b   (oldest first)\nthe placement buffer",
+      "warn": "Read before the lock, so the locked part stays short. None usable:\nNoKvClusterError."
+    }
+  ],
+  [
+    "tmp",
+    "lock",
+    "both",
+    "Take the zone's lock",
+    "awaiting-zone-lock \u00b7 one run at a time",
+    {
+      "call": "signal the zone's kv-zone-lock run, or start it; wait for lock_granted",
+      "recv": "a lease of up to five minutes",
+      "warn": "Ten runs reading at once would all pick the same empty cluster, so only\nthe lock's holder reads figures and chooses (AD32). After 30 minutes in\nline: KvZoneLockTimeoutError."
+    }
+  ],
+  [
+    "tmp",
+    "kva",
+    "both",
+    "Read cluster a",
+    "choosing-kv-cluster \u00b7 oldest first",
+    {
+      "call": "figures from the worker inside ocp4-prod-kv-five-az1-a, on its own queue",
+      "recv": "per node: allocatable and requested CPU and memory, Halted VMs counted",
+      "warn": "It fits when a node has room for the VM's CPU and memory and the cluster\nstays within 1 \u2212 buffer. The scan stops at the first that fits (AD33)."
+    }
+  ],
+  [
+    "kva",
+    "vma",
+    "BM",
+    "Create the VM on a",
+    "creating-vm \u00b7 Halted, no MAC requested",
+    {
+      "call": "the worker creates kubevirt.io/v1 VirtualMachine, Halted",
+      "send": "name: ocp-c200-kv32-five-k7q2m9xd   (serial drawn by the worker)\nMAC: assigned by KubeMacPool\nlabels: redbull.io/created-by: <run id> \u00b7 redfish-enabled: \"true\"",
+      "recv": "the VM object exists",
+      "warn": "A taken name is drawn again, up to 3 times. The worker creates nothing\nafter the create's deadline: 90 seconds, or the lease's end."
+    }
+  ],
+  [
+    "kva",
+    "kva",
+    "VM",
+    "Create on a fails",
+    "an outage, or a worker gone",
+    {
+      "call": "the create on ocp4-prod-kv-five-az1-a fails, retried until its deadline",
+      "warn": "The run carries on to the next cluster (the operator, 2026-11-24)."
+    }
+  ],
+  [
+    "tmp",
+    "kva",
+    "VM",
+    "Did it land on a?",
+    "checking-kv-cluster \u00b7 after the deadline",
+    {
+      "call": "ask cluster a for a VM labelled redbull.io/created-by: <run id>",
+      "recv": "a VM there: the run keeps it.   none: clean.   no answer: unknown",
+      "warn": "Asked after the create's deadline, so nothing of the run can still land\nthere while the run moves on."
+    }
+  ],
+  [
+    "tmp",
+    "dsv",
+    "VM",
+    "Clean up later",
+    "cluster a did not answer",
+    {
+      "call": "start delete-stray-vm-ocp4-prod-kv-five-az1-a-<run id> as an abandoned child",
+      "warn": "It deletes any VM of the run on cluster a once the cluster answers\n(procedure 22). The run moves on meanwhile."
+    }
+  ],
+  [
+    "tmp",
+    "kvb",
+    "VM",
+    "Read cluster b",
+    "the next cluster",
+    {
+      "call": "figures from the worker inside ocp4-prod-kv-five-az1-b",
+      "recv": "fits"
+    }
+  ],
+  [
+    "kvb",
+    "vmb",
+    "VM",
+    "Create the VM on b",
+    "creating-vm \u00b7 Halted, no MAC requested",
+    {
+      "call": "the worker creates kubevirt.io/v1 VirtualMachine, Halted",
+      "send": "name: ocp-c200-kv32-five-k7q2m9xd \u00b7 MAC from KubeMacPool\nlabels: redbull.io/created-by: <run id> \u00b7 redfish-enabled: \"true\"",
+      "recv": "the VM object exists"
+    }
+  ],
+  [
+    "tmp",
+    "lock",
+    "both",
+    "Release the lock",
+    "releasing-zone-lock \u00b7 the VM object exists",
+    {
+      "call": "release the zone's kv-zone-lock",
+      "warn": "The next run's figures already count this VM, as a stopped VM: nothing\nis remembered between runs."
+    }
+  ],
+  [
+    "vma",
+    "vma",
+    "BM",
+    "Root disk bound",
+    "awaiting-root-disk \u00b7 outside the lock",
+    {
+      "call": "wait for the root disk's DataVolume: Succeeded and bound, the VM admitted",
+      "warn": "Up to 10 minutes, then VmRootDiskNotBoundError: the run deletes its own\nVM by its run-id label (removing-vm) and fails."
+    }
+  ],
+  [
+    "vmb",
+    "vmb",
+    "VM",
+    "Root disk bound",
+    "awaiting-root-disk \u00b7 outside the lock",
+    {
+      "call": "wait for the root disk's DataVolume: Succeeded and bound, the VM admitted"
+    }
+  ],
+  [
+    "vma",
+    "kvr",
+    "BM",
+    "Exposed as Redfish",
+    "kubevirt-redfish",
+    {
+      "call": "kubevirt-redfish exposes the VM labelled redfish-enabled as a Redfish system"
+    }
+  ],
+  [
+    "vmb",
+    "kvr",
+    "VM",
+    "Exposed as Redfish",
+    "kubevirt-redfish",
+    {
+      "call": "kubevirt-redfish exposes the VM labelled redfish-enabled as a Redfish system"
+    }
+  ],
+  [
+    "kvr",
+    "scan",
+    "both",
+    "Listed in server-scan",
+    "under its name",
+    {
+      "recv": "ocp-c200-kv32-five-k7q2m9xd, available",
+      "warn": "The serial is also the VM's SMBIOS serial, so the Agent's inventory\nreports the serial the name carries."
+    }
+  ],
+  [
+    "tmp",
+    "par",
+    "both",
+    "Hand the VM to the parent",
+    "completed \u00b7 name, MAC, cluster",
+    {
+      "recv": "ocp-c200-kv32-five-k7q2m9xd \u00b7 its MAC \u00b7 its KV cluster \u00b7 the placement table",
+      "warn": "The parent installs exactly that VM (procedure 01, from step 4)."
+    }
+  ],
+  [
+    "dsv",
+    "kva",
+    "VM",
+    "Delete the stray",
+    "later, when cluster a answers",
+    {
+      "call": "delete_vm_on_cluster on cluster a's queue, by the run-id label, in every namespace",
+      "recv": "deleted: true, or false when the create had never landed",
+      "warn": "So a run never keeps two VMs: a stray stays Halted and unused until it is\ndeleted."
+    }
+  ]
+];
+const TAGS = {"BM": "lands", "VM": "moves on"};
+const HAS_MODES = true;
+const STEPS = RAW.map(r => ({f:r[0], t:r[1], b:r[2], n:r[3], d:r[4], x:r[5]||null}));
+const esc = s => String(s).replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+
+function showDetail(s){
+  const box=document.getElementById("detail");
+  if(!s){ box.innerHTML='<div class="dh">Exchange</div>'+
+      '<div class="empty">Pick a step, or press play.</div>'; return; }
+  if(!s.x){ box.innerHTML='<div class="dh">Exchange &mdash; '+esc(s.n)+'</div>'+
+      '<div class="empty">Not documented yet for this step.</div>'; return; }
+  let h='<div class="dh">Exchange &mdash; '+esc(s.n)+'</div>';
+  if(s.x.call) h+='<span class="k">Call</span><pre class="call">'+esc(s.x.call)+'</pre>';
+  if(s.x.send) h+='<span class="k">Sends</span><pre>'+esc(s.x.send)+'</pre>';
+  if(s.x.recv) h+='<span class="k">Receives</span><pre>'+esc(s.x.recv)+'</pre>';
+  if(s.x.warn) h+='<span class="k">Watch out</span><pre class="warn">'+esc(s.x.warn)+'</pre>';
+  box.innerHTML=h;
+}
+
+const svg = document.getElementById("svg");
+const NS = "http://www.w3.org/2000/svg";
+const el = (n,a={}) => { const e=document.createElementNS(NS,n);
+  for(const k in a) e.setAttribute(k,a[k]); return e; };
+const cx = n => NODES[n].x + NODES[n].w/2;
+const cy = n => NODES[n].y + NODES[n].h/2;
+
+let mode="BM", idx=-1, playing=false, timer=null;
+const vis = s => s.b==="both" || s.b===mode || (s.b==="IPMI" && mode==="BM");
+const active = () => STEPS.map((s,i)=>i).filter(i=>vis(STEPS[i]));
+
+function drawStatic(){
+  svg.innerHTML='<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4da3ff"/></marker></defs>';
+  GROUPS.forEach(G=>{
+    const g = el("g",{class:"group"});
+    g.appendChild(el("rect",{x:G.x,y:G.y,width:G.w,height:G.h}));
+    const gt = el("text",{x:G.x+14,y:G.y+20}); gt.textContent=G.label;
+    g.appendChild(gt); svg.appendChild(g);
+  });
+  svg.appendChild(el("g",{id:"edges"}));
+  for(const k in NODES){
+    const d=NODES[k];
+    const n=el("g",{class:"node",id:"n_"+k});
+    n.appendChild(el("rect",{x:d.x,y:d.y,width:d.w,height:d.h}));
+    if(d.k){ n.classList.add("k-"+d.k);
+      n.appendChild(el("rect",{x:d.x+1,y:d.y+9,width:4,height:d.h-18,rx:2,class:"kbar"})); }
+    const t=el("text",{x:d.x+d.w/2,y:d.y+d.h/2-3,"text-anchor":"middle"});
+    t.textContent=d.t;
+    if(d.s){ const s=el("tspan",{x:d.x+d.w/2,dy:"15",class:"s"}); s.textContent=d.s;
+             t.appendChild(s); }
+    n.appendChild(t); svg.appendChild(n);
+  }
+  svg.appendChild(el("circle",{id:"dot",r:7,opacity:0}));
+}
+
+function clip(n,tx,ty){ // where the line toward (tx,ty) leaves node n's box
+  const d=NODES[n], x=cx(n), y=cy(n), dx=tx-x, dy=ty-y;
+  const k=Math.min((d.w/2+4)/Math.max(Math.abs(dx),1e-6),
+                   (d.h/2+4)/Math.max(Math.abs(dy),1e-6));
+  return [x+dx*k, y+dy*k];
+}
+function path(a,b){
+  if(a===b){ // self-loop: below the node when it sits near the top edge
+    const d=NODES[a], x=cx(a);
+    if(d.y < 72){ const y=d.y+d.h;
+      return `M ${x-28} ${y} C ${x-40} ${y+46} ${x+40} ${y+46} ${x+28} ${y}`; }
+    const y=d.y;
+    return `M ${x-28} ${y} C ${x-40} ${y-46} ${x+40} ${y-46} ${x+28} ${y}`;
+  }
+  const [x1,y1]=clip(a,cx(b),cy(b)), [x2,y2]=clip(b,cx(a),cy(a));
+  const mx=(x1+x2)/2, my=(y1+y2)/2;
+  const dx=x2-x1, dy=y2-y1, len=Math.hypot(dx,dy)||1;
+  const bow=Math.min(46,len*0.12);
+  return `M ${x1} ${y1} Q ${mx - dy/len*bow} ${my + dx/len*bow} ${x2} ${y2}`;
+}
+
+function render(){
+  document.querySelectorAll(".node").forEach(n=>n.classList.remove("hot","done"));
+  const edges=document.getElementById("edges"); edges.innerHTML="";
+  document.getElementById("dot").setAttribute("opacity",0);
+
+  const act=active(), here=act.indexOf(idx);
+  act.forEach((si,pos)=>{ if(here>=0 && pos<here)
+    document.getElementById("n_"+STEPS[si].t)?.classList.add("done"); });
+  act.forEach((si,pos)=>{ if(here>=0 && pos<here){ const t=STEPS[si];
+    edges.appendChild(el("path",{class:"edge trail",d:path(t.f,t.t)})); } });
+
+  if(idx>=0 && STEPS[idx]){
+    const s=STEPS[idx];
+    const p=el("path",{class:"edge hot",d:path(s.f,s.t)});
+    edges.appendChild(p);
+    document.getElementById("n_"+s.f).classList.add("hot");
+    document.getElementById("n_"+s.t).classList.add("hot");
+
+    const total=p.getTotalLength();
+    const mid=p.getPointAtLength(total*0.5);
+    const a=p.getPointAtLength(Math.max(0,total*0.5-6));
+    const b=p.getPointAtLength(Math.min(total,total*0.5+6));
+    const tx=b.x-a.x, ty=b.y-a.y, tl=Math.hypot(tx,ty)||1;
+    const off=16, lx=mid.x+(-ty/tl*off), ly=mid.y+(tx/tl*off);
+    const w=s.n.length*6.4+14;
+    edges.appendChild(el("rect",{x:lx-w/2,y:ly-11,width:w,height:18,rx:4,
+      fill:"#0e0e11",stroke:"#2c2c35","stroke-width":1}));
+    const lab=el("text",{x:lx,y:ly+2,"text-anchor":"middle",class:"elab"});
+    lab.textContent=s.n; edges.appendChild(lab);
+
+    const dot=document.getElementById("dot");
+    dot.setAttribute("opacity",1);
+    const t0=performance.now(), dur=900;
+    (function anim(now){
+      const k=Math.min(1,(now-t0)/dur);
+      const pt=p.getPointAtLength(total*k);
+      dot.setAttribute("cx",pt.x); dot.setAttribute("cy",pt.y);
+      if(k<1) requestAnimationFrame(anim);
+    })(t0);
+  }
+
+  document.querySelectorAll(".step").forEach(n=>{
+    const i=+n.dataset.i;
+    n.classList.toggle("on", i===idx);
+    n.classList.toggle("off", !vis(STEPS[i]));
+  });
+  showDetail(idx>=0 ? STEPS[idx] : null);
+  document.getElementById("cap").textContent =
+    idx<0 ? act.length+" steps" : "Step "+(act.indexOf(idx)+1)+" of "+act.length;
+}
+
+function buildList(){
+  const box=document.getElementById("steps"); box.innerHTML="";
+  STEPS.forEach((s,i)=>{
+    const d=document.createElement("div");
+    d.className="step"; d.dataset.i=i;
+    d.innerHTML='<span class="num">'+(i+1)+'</span><span class="txt">'+
+      '<span class="nm">'+s.n+'</span><span class="nt">'+s.d+'</span></span>'+
+      (s.b!=="both"?'<span class="tag '+s.b+'">'+(TAGS[s.b]||s.b)+'</span>':'');
+    d.onclick=()=>{ if(vis(s)){ idx=i; stop(); render(); } };
+    box.appendChild(d);
+  });
+}
+
+function go(dir){
+  const act=active(); if(!act.length) return;
+  let p=act.indexOf(idx);
+  p = p<0 ? (dir>0?0:act.length-1) : p+dir;
+  if(p>=act.length){ stop(); idx=act[act.length-1]; render(); return; }
+  if(p<0) p=0;
+  idx=act[p]; render();
+  document.querySelector('.step[data-i="'+idx+'"]')
+    ?.scrollIntoView({block:"nearest",behavior:"smooth"});
+}
+function stop(){ playing=false; clearInterval(timer);
+  document.getElementById("play").textContent="Play"; }
+function play(){
+  if(playing){ stop(); return; }
+  playing=true; document.getElementById("play").textContent="Pause";
+  const act=active();
+  if(idx===act[act.length-1]) idx=-1;
+  go(1);
+  timer=setInterval(()=>{ const a=active();
+    if(idx===a[a.length-1]){ stop(); return; } go(1); },1600);
+}
+function setMode(m){
+  mode=m; stop(); idx=-1;
+  document.getElementById("mBM").classList.toggle("sel",m==="BM");
+  document.getElementById("mVM").classList.toggle("sel",m==="VM");
+  render();
+}
+
+document.getElementById("play").onclick=play;
+document.getElementById("next").onclick=()=>{stop();go(1)};
+document.getElementById("prev").onclick=()=>{stop();go(-1)};
+document.getElementById("rst").onclick=()=>{stop();idx=-1;render()};
+if(HAS_MODES){
+  document.getElementById("modes").style.display="";
+  document.getElementById("mBM").onclick=()=>setMode("BM");
+  document.getElementById("mVM").onclick=()=>setMode("VM");
+}
+document.addEventListener("keydown",e=>{
+  if(e.key==="ArrowRight"){stop();go(1)} if(e.key==="ArrowLeft"){stop();go(-1)}
+  if(e.key===" "){e.preventDefault();play()}
+});
+
+// Build FIRST. setMode() calls render(), which needs the SVG and the step list
+// to exist — doing this earlier throws and aborts the rest of the script.
+drawStatic(); buildList();
+
+// Deep link: #step=7, and #vm to open on the virtual branch. Mode before step,
+// because switching mode resets the position.
+(function(){
+  const h=location.hash.slice(1);
+  if(HAS_MODES && /vm/i.test(h)) setMode("VM");
+  const m=h.match(/step=(\d+)/);
+  if(m){ const i=+m[1]-1; if(STEPS[i] && vis(STEPS[i])) idx=i; }
+})();
+
+render();
+</script>
+</body>
+</html>
