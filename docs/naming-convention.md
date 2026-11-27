@@ -1,7 +1,7 @@
 # Naming, zones and labels
 
-How clusters, nodes, InfraEnvs and ConfigMaps are named, how a server reaches the right zone, and which
-labels each object carries.
+How clusters, nodes, InfraEnvs, NodePools and ConfigMaps are named, how a server reaches the right zone,
+and which labels each object carries.
 
 ---
 
@@ -15,6 +15,7 @@ All names are lowercase (Kubernetes names must be).
 | **Cluster** (seed, KV) | `ocp4-<lifecycle>-<seed\|kv>-<site>-<zone>-<id>` | `ocp4-prod-seed-five-az1-a`<br>`ocp4-prod-kv-five-az1-a` |
 | **Node** (VM or bare metal) | `ocp-<flavor>-<mtl\|kv<cpu>>-<site>-<serial>` | `ocp-c200-mtl-five-fch2145v1ab`<br>`ocp-c200-kv32-five-k7q2m9xd` |
 | **InfraEnv** | `<flavor>-<mtl\|kv<cpu>>-<zone>` | `c200-mtl-az1`<br>`c200-mtl-az3`<br>`c200-kv32-az1` |
+| **NodePool** | `<clusterName>-<infraEnv>[-<role>]` | `prod-eck-five-a-c200-mtl-az1`<br>`prod-solr-five-a-c200-mtl-az1-primary`<br>`prod-solr-five-a-c200-mtl-az1-replica` |
 | **Controller ConfigMap** | `<controller>-config`, where `<controller>` is the controller's name, in the controller's own namespace | `inventory-controller-config`<br>`kv-capacity-controller-config` |
 | **Capacity policy ConfigMap** | `capacity-policy`, on every Seed | `capacity-policy` |
 
@@ -27,6 +28,8 @@ All names are lowercase (Kubernetes names must be).
 | `zone` | The availability zone. In InfraEnv, seed and KV cluster names; never in node, tenant cluster or MCE names |
 | `id` | Cluster: a sequence letter, `a` to `z` |
 | `serial` | Node: the server's serial number for bare metal. For a VM, 8 random lowercase letters and digits, drawn by `create-vm` when it builds the VM and also written as the VM's SMBIOS serial |
+| `clusterName` | NodePool: the HostedCluster's `clusterName`, the cluster's day1 file name without `ocp4-`, e.g. `prod-solr-five-a` |
+| `role` | NodePool: what the pool's nodes are for inside their cluster, one lowercase word with no dash, e.g. `primary`, `replica`. Required when two NodePools of one cluster draw from the same InfraEnv ([NodePool roles](#nodepool-roles)) |
 
 ### Cluster flavors
 
@@ -57,6 +60,57 @@ and a KV cluster's file are told apart from an MCE's and a tenant's in day1.
 | `n` | Extra NIC | `ocp-c200n-mtl-five-fch2145v1ab` |
 | `d` | Extra disk | `ocp-c200d-mtl-five-fch2145v1ab` |
 | `x` | Other deviation (to be defined) | `ocp-c200x-mtl-five-fch2145v1ab` |
+
+### NodePool roles
+
+A NodePool's name is `<clusterName>-<infraEnv>`, which the hostedclusters-setup chart derives from
+the day1 entry's `infraEnvName`. That gives a cluster one NodePool per InfraEnv. Some clusters need
+two or more NodePools on the **same** InfraEnv, because their nodes do different jobs. The `role`
+suffix names that job.
+
+**The scenario: a Solr cluster.** Solr runs primary and replica shards. Both run on the same
+servers, `c200` bare metal in `az1`, so both NodePools draw from InfraEnv `c200-mtl-az1`. But the
+two kinds of node are not interchangeable:
+
+| NodePool | Its nodes get | Tuning | Why it differs |
+|---|---|---|---|
+| `prod-solr-five-a-c200-mtl-az1-primary` | `redbull.io/nodepool-role: primary` | The primaries' profile, e.g. for indexing: I/O and dirty-page settings | Primary shards take every write |
+| `prod-solr-five-a-c200-mtl-az1-replica` | `redbull.io/nodepool-role: replica` | The replicas' profile, e.g. for queries and caches: memory settings | Replica shards serve reads |
+
+Without a suffix both entries derive the same name, `prod-solr-five-a-c200-mtl-az1`, and the chart
+refuses the file ("nodepool name … is used twice"). With one, each NodePool has its own name, and so
+its own:
+
+| Per NodePool | Field in the day1 entry | Effect |
+|---|---|---|
+| Node labels | `nodeLabels` | The Solr workloads place primaries and replicas by `nodeSelector` on `redbull.io/nodepool-role` |
+| Tuning | `tuningConfig` (Tuned, PerformanceProfile) and `configs` (MachineConfigs) | Each role gets the node tuning its shards need, without tuning the other role's nodes |
+| Size | `replicas` | `update-nodepool` sets one NodePool by name ([04](procedures/04-update-nodepool.md)): replicas grow without touching primaries |
+| Supply | The NodePool's waiting workers | The Inventory Controller orders machines per NodePool (AD26), so one role's waiting workers never wait on the other's |
+| Upgrade | The NodePool's version | Upgrade one role, let it soak, then the other ([13](procedures/13-upgrade-hosted-cluster-workers.md)) |
+
+**Decode and prefill.** The role is the name's last part. An InfraEnv name always has three parts
+(`<flavor>-<mtl|kv<cpu>>-<zone>`) and the `clusterName` is known, so any NodePool name decodes into
+cluster, flavor, size, zone and role. That makes the role usable by tools, not only by people:
+
+- **Prefill.** Wingman, or the workflow writing the file, builds the whole entry from the name: the
+  InfraEnv (`infraEnvName`), the zone and role labels (`nodeLabels`), and the tuning for the role
+  from a per-role preset (`tuningConfig`, `configs`). Asking for `c200-mtl-az1-primary` on a Solr
+  cluster is enough.
+- **Check.** day1 CI or `provision-cluster` refuses an entry whose `redbull.io/nodepool-role` label
+  differs from its name's role (rule 7, section 3.4).
+- **Report.** Nodes, Machines and inventory group by role without reading any NodePool's spec.
+
+Rules for the suffix:
+
+1. Optional when the cluster has one NodePool on that InfraEnv; **required** on every NodePool of
+   the cluster that shares its InfraEnv with another.
+2. One lowercase word, `[a-z0-9]+`, no dash, so the name decodes without ambiguity. Short: it
+   lengthens the NodePool's, Machines' and Nodes' names.
+3. The same role on every zone's NodePool: `…-c200-mtl-az1-primary`, `…-c200-mtl-az2-primary`,
+   `…-c200-mtl-az3-primary`. The role is the job, the zone is where.
+4. The day1 entry sets `name` explicitly, which the chart uses as it is, and carries the role in
+   `nodeLabels` as `redbull.io/nodepool-role`.
 
 ---
 
@@ -127,6 +181,8 @@ The section is a reference in four parts: 3.1 lists every label, 3.2 shows each 
 <tr><th colspan="6" align="left">Placement of VMs</th></tr>
 <tr><td><code>redbull.io/role</code></td><td><code>mce</code>: a master or worker MCE node; <code>worker</code>: a tenant warm-pool VM</td><td>VirtualMachine</td><td><code>create-vm</code>, or the procedure creating an MCE's VMs</td><td>MCE VM anti-affinity</td><td>Rule 5</td></tr>
 <tr><td><code>redbull.io/mce</code></td><td>The MCE's name: the MCE it is part of (<code>role=mce</code>), or the MCE whose InfraEnv it serves (<code>role=worker</code>)</td><td>VirtualMachine</td><td><code>create-vm</code>, or the procedure creating an MCE's VMs</td><td>MCE VM anti-affinity; reporting</td><td>Rule 5</td></tr>
+<tr><th colspan="6" align="left">What a node is for</th></tr>
+<tr><td><code>redbull.io/nodepool-role</code></td><td>The NodePool's <code>role</code>, e.g. <code>primary</code>, <code>replica</code></td><td>NodePool <code>nodeLabels</code>; tenant Node</td><td>The cluster's day1 entry, rendered into the NodePool's <code>nodeLabels</code> by the hostedclusters-setup chart</td><td>The tenant's workloads (<code>nodeSelector</code>, affinity); day1 CI's check (rule 7); reporting</td><td>Two NodePools on one InfraEnv do different jobs and need different placement and tuning (<a href="#nodepool-roles">NodePool roles</a>). Not <code>redbull.io/role</code>, which places VMs on a KV cluster (rule 5)</td></tr>
 <tr><th colspan="6" align="left">Set by the platform</th></tr>
 <tr><td><code>infraenvs.agent-install.openshift.io</code></td><td>The InfraEnv's name</td><td>Agent; BareMetalHost and NMStateConfig</td><td>assisted-service on the Agent; <code>add-server-to-mce</code> on the BareMetalHost and NMStateConfig</td><td>assisted-service; the Inventory Controller, to tell which pool an Agent is in</td><td>It ties a host, its network config and its Agent to one InfraEnv</td></tr>
 </tbody>
@@ -141,9 +197,9 @@ The section is a reference in four parts: 3.1 lists every label, 3.2 shows each 
 <tbody>
 <tr><td>MCE</td><td>InfraEnv</td><td><code>agentLabels</code>: <code>redbull.io/flavor</code>, <code>redbull.io/size</code>, <code>redbull.io/site</code>, <code>topology.kubernetes.io/zone</code>, passed to its Agents</td></tr>
 <tr><td>MCE</td><td>Agent</td><td><code>redbull.io/flavor</code>, <code>redbull.io/size</code>, <code>redbull.io/site</code>, <code>topology.kubernetes.io/zone</code> from its InfraEnv; <code>infraenvs.agent-install.openshift.io</code>; <code>redbull.io/claimed</code> once bound</td></tr>
-<tr><td>MCE</td><td>NodePool</td><td><code>redbull.io/inventory-managed</code> on itself; it selects <code>redbull.io/flavor</code>, <code>redbull.io/size</code> and <code>topology.kubernetes.io/zone</code>, excluding <code>redbull.io/claimed</code>, and sets <code>topology.kubernetes.io/zone</code> on its Nodes</td></tr>
+<tr><td>MCE</td><td>NodePool</td><td><code>redbull.io/inventory-managed</code> on itself; it selects <code>redbull.io/flavor</code>, <code>redbull.io/size</code> and <code>topology.kubernetes.io/zone</code>, excluding <code>redbull.io/claimed</code>, and sets <code>topology.kubernetes.io/zone</code> on its Nodes, and <code>redbull.io/nodepool-role</code> when it has a role</td></tr>
 <tr><td>MCE</td><td>BareMetalHost, NMStateConfig, BMC Secret</td><td><code>redbull.io/installed-by</code>; <code>infraenvs.agent-install.openshift.io</code> on the BareMetalHost and NMStateConfig; a VM's BareMetalHost also <code>redbull.io/kv-cluster</code> and <code>redbull.io/created-by</code></td></tr>
-<tr><td>Hosted cluster</td><td>Tenant Node</td><td><code>topology.kubernetes.io/zone</code>, from its NodePool's <code>nodeLabels</code></td></tr>
+<tr><td>Hosted cluster</td><td>Tenant Node</td><td><code>topology.kubernetes.io/zone</code>, and <code>redbull.io/nodepool-role</code> when its NodePool has a role, from its NodePool's <code>nodeLabels</code></td></tr>
 <tr><td>Customer MCE</td><td>Customer MCE Node</td><td><code>topology.kubernetes.io/zone</code>, from per-zone kubelet node labels (a MachineConfig per zone) or labels set at install, taken from its KV cluster's zone</td></tr>
 <tr><td>KV cluster</td><td>KV hypervisor Node</td><td><code>topology.kubernetes.io/zone</code>, required, from the KV NodePool's <code>nodeLabels</code></td></tr>
 <tr><td>KV cluster</td><td>VirtualMachine</td><td><code>redbull.io/flavor</code>, <code>redbull.io/size</code>, <code>redbull.io/site</code>, <code>topology.kubernetes.io/zone</code>, <code>redbull.io/role</code>, <code>redbull.io/mce</code>, <code>redbull.io/kv-cluster</code>, <code>redbull.io/created-by</code>, <code>redfish-enabled</code></td></tr>
@@ -188,6 +244,26 @@ nodepool:
   replicas: 12
   nodeLabels:
     topology.kubernetes.io/zone: az1
+```
+
+```yaml
+# sites/five/mces/ocp4-prod-mce-five-a/hostedClusters/ocp4-prod-solr-five-a.yaml
+# Two NodePools on InfraEnv c200-mtl-az1, told apart by their role (repeated for az2, az3)
+nodepool:
+- infraEnvName: c200-mtl-az1
+  name: prod-solr-five-a-c200-mtl-az1-primary
+  replicas: 3
+  nodeLabels:
+    topology.kubernetes.io/zone: az1
+    redbull.io/nodepool-role: primary
+  tuningConfig: solr-primary
+- infraEnvName: c200-mtl-az1
+  name: prod-solr-five-a-c200-mtl-az1-replica
+  replicas: 6
+  nodeLabels:
+    topology.kubernetes.io/zone: az1
+    redbull.io/nodepool-role: replica
+  tuningConfig: solr-replica
 ```
 
 ```yaml
@@ -239,6 +315,9 @@ metadata:
    cluster is known only once it is claimed.
 6. **A label naming a run carries the run id** (AD37). A pool slot's workflow id is used again by
    later runs, and each of them makes a different machine.
+7. **A NodePool's role and its `redbull.io/nodepool-role` label are one value.** The name's last
+   part and the label in its `nodeLabels` agree, or the entry is refused, so a tool can decode the
+   role from the name and a workload can select it by the label ([NodePool roles](#nodepool-roles)).
 
 ---
 
@@ -252,3 +331,6 @@ metadata:
 | 4 | How Customer MCE Nodes get their zone label: kubelet node labels per zone, or labels at install |
 | 5 | `create-vm` labelling a VM `redbull.io/kv-cluster`, and `add-server-to-mce` labelling a VM's BareMetalHost `redbull.io/kv-cluster` and `redbull.io/created-by` (section 3). The VM's name and its `redbull.io/created-by` label are already built this way |
 | 6 | `provision-cluster` or day1 CI refusing a KV cluster file whose NodePools do not all carry one identical zone label, equal to the zone in the cluster's name |
+| 7 | `provision-cluster` or day1 CI refusing a NodePool whose role suffix and `redbull.io/nodepool-role` label differ, and two NodePools sharing an InfraEnv without roles (rule 7) |
+| 8 | Prefill: whether the hostedclusters-setup chart takes a `role:` key and derives the name and label itself, and where the per-role tuning presets live (Wingman's flavors, or day1's `tuning/` catalogue) |
+| 9 | That NodePool `nodeLabels` reach the tenant Nodes for a custom key on the HyperShift version in use, as they do for the zone label |
