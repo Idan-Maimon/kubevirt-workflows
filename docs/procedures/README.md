@@ -85,6 +85,7 @@ configuration. If they assume a Customer MCE, it is a second implementation.
 |---|---|---|
 | 10 | [Create Seed Cluster](10-create-seed-cluster.md) | User-provisioned, largely manual |
 | 11 | [Add BM to Seed Cluster](11-add-bm-to-seed-cluster.md) | The one cluster that is not hosted |
+| 24 | [Add Server to UPI Cluster](24-add-server-to-upi.md) | The ignition path of 11, for any user-provisioned cluster |
 | 12 | [Create Customer MCE](12-create-customer-mce.md) | User-provisioned on virtual machines |
 
 ## Upgrades — top down
