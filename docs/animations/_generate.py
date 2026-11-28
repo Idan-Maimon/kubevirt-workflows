@@ -605,6 +605,131 @@ WORKFLOWS["22-delete-vm"] = dict(
                "VMs, so the room shows as soon as the VM is gone."}),
     ])
 
+WORKFLOWS["24-add-server-to-upi"] = dict(
+    title="24 :: Add Server to UPI Cluster",
+    subtitle="One bare-metal server joins a user-provisioned cluster as a Node of that cluster: an "
+             "oc adm node-image create ISO with bond0 over its two link-up NICs, served by the "
+             "worker inside the cluster and booted from the server's virtual media. Only this host's "
+             "CSRs are approved.",
+    look="v2",
+    mode_labels=("The server", "Joins", "Already a Node"),
+    tags={"BM": "joins", "VM": "already in"},
+    nodes={"op":   NK(20, 30, "Operator", "names a server", "actor"),
+           "tmp":  NK(385, 30, "Temporal", "add-server-to-upi-<cluster>_<server>", "orch", 250),
+           "seg":  NK(780, 30, "Segments Manager", "the node VLAN", "svc"),
+           "scan": NK(20, 170, "server-scan", "lock · interfaces[]", "svc"),
+           "wrk":  NK(330, 160, "upi-server worker", "upi-server-activity-<cluster>", "orch", 210),
+           "api":  NK(330, 330, "The cluster's API", "CSRs · Nodes", "svc", 210),
+           "ni":   NK(570, 160, "node-image", "oc adm node-image create", "svc", 190),
+           "ngx":  NK(570, 290, "nginx sidecar", "http://<route>/<host>.iso", "svc", 190),
+           "bmc":  NK(800, 290, "BMC", "Redfish virtual media", "machine", 180),
+           "srv":  NK(800, 410, "The server", "bond0 · bond0.<vlan>", "machine", 180)},
+    group={"x": 315, "y": 132, "w": 460, "h": 268, "label": "THE UPI CLUSTER"},
+    steps=[
+      ("op","tmp","both","Start the run","add-server-to-upi-&lt;cluster&gt;_&lt;server&gt;",
+       {"call":"POST /workflows/upi-lifecycle/add-server-to-upi",
+        "send":"cluster: ocp4-prod-mce-five-c\nserver_name: OCP-C200-MTL-FIVE-7XK2M33\n"
+               "node_labels: {node-role.kubernetes.io/infra: \"\"}",
+        "warn":"One Node per run: N servers are N runs. Not a hosted cluster's worker,\n"
+               "which is a NodePool change (procedure 04)."}),
+
+      ("tmp","seg","both","Resolve the VLAN","resolving-network · MCE, then UPI",
+       {"call":"segment_lifecycle.find_cluster_allocation, for the cluster",
+        "recv":"MCE segment · VLAN 105 · dhcp: true",
+        "warn":"Nothing is locked yet. No segment: UpiNetworkNotFoundError.\n"
+               "dhcp: false: SegmentWithoutDhcpError."}),
+
+      ("tmp","wrk","both","To the cluster's worker","its own queue",
+       {"call":"activities on upi-server-activity-ocp4-prod-mce-five-c",
+        "warn":"The worker runs inside the target cluster. Until it polls, the\n"
+               "activity waits, pending."}),
+
+      ("wrk","scan","both","Lock the server","allocating-server · 4 hours",
+       {"call":"upi_server.allocate_upi_server -> POST /servers/available",
+        "send":"name: OCP-C200-MTL-FIVE-7XK2M33 · holder: add-server-to-upi · ttl: 4h",
+        "recv":"BMC endpoint and vendor\ninterfaces[]: name, MAC, port, link state",
+        "warn":"Live-checked by server-scan. Refused: ServerNotAvailableError,\n"
+               "ServerReservedError."}),
+
+      ("tmp","tmp","both","Choose the bond","selecting-bond · in the workflow",
+       {"call":"two link-UP NICs on two distinct physical ports, from interfaces[]",
+        "recv":"nic1 aa:bb:cc:00:00:01 · nic2 aa:bb:cc:00:00:02",
+        "warn":"Never from the MAC list (procedure 00): the rule is 01's, reused.\n"
+               "IPMI BMC: VirtualMediaUnsupportedError. No bond:\n"
+               "NoBondableInterfacesError. Each gives the lock back first."}),
+
+      ("wrk","api","BM","Is it a Node?","checking-cluster",
+       {"call":"upi_server.inspect_upi_node -> GET /api/v1/nodes/ocp-c200-mtl-five-7xk2m33",
+        "recv":"404: build the ISO"}),
+
+      ("wrk","api","VM","Already a Node","checking-cluster · straight to finishing",
+       {"call":"upi_server.inspect_upi_node -> GET /api/v1/nodes/ocp-c200-mtl-five-7xk2m33",
+        "recv":"Ready",
+        "warn":"A re-run after the join resumes here: no build, no boot, no join."}),
+
+      ("wrk","ni","BM","Build the ISO","building-iso · as the worker's ServiceAccount",
+       {"call":"upi_server.build_node_iso -> oc adm node-image create --dir <work>",
+        "send":"nodes-config.yaml: hostname, rootDeviceHints /dev/sda\n"
+               "interfaces: nic1, nic2 by MAC\n"
+               "bond0 802.3ad over nic1 and nic2 · bond0.105, DHCP",
+        "recv":"ocp-c200-mtl-five-7xk2m33.iso, next to its config's hash",
+        "warn":"Keyed on the hash: the same host with the same config is built once.\n"
+               "Failure: NodeImageBuildError, with oc's message."}),
+
+      ("ni","ngx","BM","Serve it","the worker's volume · plain-HTTP Route",
+       {"recv":"http://upi-server-worker.apps.ocp4-prod-mce-five-c.<base domain>/\n"
+               "     ocp-c200-mtl-five-7xk2m33.iso",
+        "warn":"Plain HTTP, because BMCs refuse a certificate they do not trust. The ISO\n"
+               "carries the cluster's ignition endpoint, not its credentials."}),
+
+      ("wrk","bmc","BM","Insert the ISO","booting · Redfish, discovered",
+       {"call":"upi_server.boot_from_virtual_media",
+        "send":"VirtualMedia.EjectMedia   (whatever the CD slot holds)\n"
+               "VirtualMedia.InsertMedia  {Image: <the ISO's URL>}   then read back\n"
+               "PATCH Boot {BootSourceOverrideTarget: Cd, BootSourceOverrideEnabled: Once}\n"
+               "ComputerSystem.Reset      {ResetType: ForceRestart, or On}",
+        "warn":"The system, the CD slot and every action are read from the BMC, not\n"
+               "hard-coded per vendor. RedfishAuthError, VirtualMediaUnavailableError,\n"
+               "BmcCredentialsMissingError."}),
+
+      ("bmc","ngx","BM","The BMC fetches it","over HTTP",
+       {"call":"GET http://upi-server-worker.apps.../ocp-c200-mtl-five-7xk2m33.iso",
+        "warn":"Not checked beforehand: a BMC that cannot reach the cluster's *.apps\n"
+               "never boots the ISO, and the join times out (open question 2)."}),
+
+      ("bmc","srv","BM","Boot from CD","once",
+       {"call":"the server boots the ISO",
+        "recv":"nic1 and nic2 renamed by MAC, bond0 up, DHCP lease on bond0.105\n"
+               "RHCOS written to /dev/sda, a reboot, the worker ignition fetched"}),
+
+      ("srv","api","BM","Approve its CSRs","joining · every 15 seconds",
+       {"call":"upi_server.await_node_joined",
+        "send":"approve: the node bootstrapper's client CSR for system:node:ocp-c200-mtl-five-7xk2m33\n"
+               "approve: the serving CSR requested by system:node:ocp-c200-mtl-five-7xk2m33",
+        "recv":"Node ocp-c200-mtl-five-7xk2m33 Ready",
+        "warn":"Only this host's, by subject and by requester: any other pending CSR\n"
+               "is left alone. After join_timeout_minutes (90): NodeJoinTimeoutError."}),
+
+      ("wrk","api","both","Label the Node","finishing",
+       {"call":"upi_server.finish_upi_node",
+        "send":"node_labels, then read back",
+        "recv":"node-role.kubernetes.io/infra: \"\""}),
+
+      ("wrk","bmc","BM","Eject, delete the ISO","best effort",
+       {"call":"VirtualMedia.EjectMedia · remove ocp-c200-mtl-five-7xk2m33.iso"}),
+
+      ("wrk","scan","both","Extend the lock","a day",
+       {"call":"upi_server.extend_upi_server_lock -> 24h",
+        "warn":"So no run draws the server again before server-scan sees it in the\n"
+               "cluster."}),
+
+      ("tmp","op","both","Completed","the Node, its VLAN and bond",
+       {"recv":"Node: name, InternalIP, Ready, roles\n"
+               "VLAN 105 · the bond's two MACs · the CSRs approved · already_joined",
+        "warn":"There is no removal path yet: draining, deleting the Node, wiping the\n"
+               "disk (AD23) and releasing the server (open question 3)."}),
+    ])
+
 WORKFLOWS["03-create-hosted-cluster"] = dict(
     title="03 :: Create Hosted Cluster",
     subtitle="Creates demand and stops. Workers appear because the controller sees the new "
