@@ -1,0 +1,641 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>23 :: Create UPI Cluster</title>
+<style>
+  :root{
+    --bg:#0e0e11; --panel:#16161b; --line:#2c2c35; --ink:#e6e6ec; --dim:#8b8b99;
+    --accent:#4da3ff; --ok:#3ecf8e; --warn:#e8b339; --vm:#b57bff; --bm:#58c7d8;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:14px/1.5 "Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  header{padding:18px 24px 10px;border-bottom:1px solid var(--line)}
+  h1{margin:0;font-size:19px;font-weight:600;letter-spacing:.2px}
+  .sub{color:var(--dim);font-size:13px;margin-top:4px;max-width:900px}
+  .wrap{display:flex;align-items:stretch;min-height:700px}
+  .stage{flex:1;padding:14px 10px 12px 18px;display:flex;flex-direction:column;min-width:0}
+  #svg{width:100%;height:400px;flex:0 0 auto}
+  .detail{margin-top:10px;border:1px solid var(--line);border-radius:8px;background:#121217;
+          padding:11px 14px;flex:1;min-height:210px;max-height:350px;overflow:auto}
+  .dh{color:var(--dim);font-size:10.5px;text-transform:uppercase;letter-spacing:1.2px;
+      margin:0 0 8px;font-weight:600}
+  .k{color:var(--dim);font-size:10px;text-transform:uppercase;letter-spacing:1px;
+     display:block;margin:9px 0 3px}
+  .k:first-of-type{margin-top:0}
+  .detail pre{margin:0;white-space:pre-wrap;word-break:break-word;
+       font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+       font-size:11.5px;line-height:1.55;color:#cfd3da}
+  pre.call{color:var(--accent)}
+  pre.warn{color:var(--warn)}
+  .empty{color:var(--dim);font-style:italic;font-size:12.5px}
+  .side{width:366px;border-left:1px solid var(--line);background:var(--panel);
+        padding:14px 16px;overflow-y:auto;max-height:770px}
+  .side h2{font-size:12px;text-transform:uppercase;letter-spacing:1.2px;
+           color:var(--dim);margin:0 0 10px;font-weight:600}
+  .step{padding:8px 10px;border-radius:6px;cursor:pointer;display:flex;gap:9px;
+        border:1px solid transparent;margin-bottom:3px}
+  .step:hover{background:#1e1e25}
+  .step.on{background:#1b2838;border-color:var(--accent)}
+  .step.off{opacity:.3}
+  .num{color:var(--dim);font-variant-numeric:tabular-nums;min-width:22px;font-size:12px}
+  .step.on .num{color:var(--accent)}
+  .txt{flex:1}
+  .nm{font-weight:500;display:block}
+  .nt{color:var(--dim);font-size:12px;margin-top:2px;display:block}
+  .tag{font-size:10px;padding:1px 6px;border-radius:99px;border:1px solid var(--line);
+       color:var(--dim);align-self:flex-start;margin-top:2px}
+  .tag.VM{color:var(--vm);border-color:var(--vm)}
+  .tag.BM{color:var(--bm);border-color:var(--bm)}
+  .tag.IPMI{color:var(--warn);border-color:var(--warn)}
+  footer{display:flex;gap:10px;align-items:center;padding:12px 18px;
+         border-top:1px solid var(--line);flex-wrap:wrap}
+  button{background:#1e1e25;color:var(--ink);border:1px solid var(--line);
+         border-radius:6px;padding:7px 14px;cursor:pointer;font-size:13px}
+  button:hover{border-color:var(--accent)}
+  button.pri{background:var(--accent);border-color:var(--accent);color:#06121f;font-weight:600}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+  .seg button{border:0;border-radius:0}
+  .seg button.sel{background:#2a3a4d;color:var(--accent)}
+  .spacer{flex:1}
+  .caption{color:var(--dim);font-size:12px}
+  text{font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .node rect{fill:#191920;stroke:var(--line);stroke-width:1.5;rx:8}
+  .node.hot rect{stroke:var(--accent);stroke-width:2.5;fill:#1b2838}
+  .node.done rect{stroke:#2f5d48}
+  .node text{fill:var(--ink);font-size:13px;font-weight:500}
+  .node tspan.s{fill:var(--dim);font-size:11px;font-weight:400}
+  .group rect{fill:none;stroke:var(--line);stroke-dasharray:4 4;rx:10}
+  .group text{fill:var(--dim);font-size:11px;letter-spacing:1px}
+  .edge{stroke:#3a3a46;stroke-width:1.5;fill:none}
+  .edge.hot{stroke:var(--accent);stroke-width:2.5}
+  .elab{fill:var(--accent);font-size:11.5px;font-weight:500}
+  #dot{fill:var(--accent);filter:drop-shadow(0 0 6px var(--accent))}
+
+  #svg{height:470px}
+  .node text{font-size:14px}
+  .node .kbar,.node.hot .kbar,.node.done .kbar{stroke:none}
+  .node.k-actor .kbar{fill:#3ecf8e} .node.k-orch .kbar{fill:#4da3ff}
+  .node.k-svc .kbar{fill:#58c7d8}   .node.k-hub .kbar{fill:#b57bff}
+  .node.k-machine .kbar{fill:#e8b339}
+  .edge.trail{stroke:#4da3ff;stroke-opacity:.25;stroke-width:1.5;stroke-dasharray:5 4}
+  .edge.hot{marker-end:url(#ah)}
+  .legend{display:flex;flex-wrap:wrap;gap:16px;margin-top:9px;font-size:11.5px;color:var(--dim)}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;
+            vertical-align:-1px}
+</style>
+</head>
+<body>
+<header>
+  <h1>23 :: Create UPI Cluster</h1>
+  <div class="sub">One user-provisioned cluster, platform none, from its name to the moment Argo CD manages it: the team's bootstrap-installer run as Jobs on the hub, readiness checked by the run, and for an MCE its day1 folder merged. An MCE is one kind of UPI cluster.</div>
+  <div class="legend">
+    <span><i style="background:#3ecf8e"></i>requester</span>
+    <span><i style="background:#4da3ff"></i>orchestration</span>
+    <span><i style="background:#58c7d8"></i>service</span>
+    <span><i style="background:#b57bff"></i>MCE object</span>
+    <span><i style="background:#e8b339"></i>machine</span>
+    <span><i style="border:1px dashed #4da3ff"></i>path so far</span>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="stage">
+    <svg id="svg" viewBox="0 0 1000 560"
+         xmlns="http://www.w3.org/2000/svg" aria-label="Workflow diagram"></svg>
+    <div class="detail" id="detail"></div>
+  </div>
+  <aside class="side">
+    <h2>Steps</h2>
+    <div id="steps"></div>
+  </aside>
+</div>
+
+<footer>
+  <button class="pri" id="play">Play</button>
+  <button id="prev">Prev</button>
+  <button id="next">Next</button>
+  <button id="rst">Restart</button>
+  <span id="modes" style="display:none">
+    <span class="caption">Kind</span>
+    <span class="seg">
+      <button id="mBM" class="sel">mce</button>
+      <button id="mVM">standalone</button>
+    </span>
+  </span>
+  <div class="spacer"></div>
+  <span class="caption" id="cap"></span>
+</footer>
+
+<script>
+const NODES = {
+  "op": {
+    "x": 20,
+    "y": 30,
+    "w": 200,
+    "h": 50,
+    "t": "Operator or Wingman",
+    "s": "names the cluster",
+    "k": "actor"
+  },
+  "tmp": {
+    "x": 385,
+    "y": 30,
+    "w": 230,
+    "h": 50,
+    "t": "Temporal",
+    "s": "create-upi-cluster-<cluster>",
+    "k": "orch"
+  },
+  "seg": {
+    "x": 780,
+    "y": 30,
+    "w": 200,
+    "h": 50,
+    "t": "Segments Manager",
+    "s": "via allocate-segment",
+    "k": "svc"
+  },
+  "cll": {
+    "x": 20,
+    "y": 190,
+    "w": 200,
+    "h": 50,
+    "t": "cluster-lifecycle limb",
+    "s": "holds the day1 token",
+    "k": "orch"
+  },
+  "day1": {
+    "x": 20,
+    "y": 330,
+    "w": 200,
+    "h": 50,
+    "t": "day1 repo",
+    "s": "sites/<site>/mces/<cluster>/",
+    "k": "svc"
+  },
+  "wrk": {
+    "x": 330,
+    "y": 160,
+    "w": 200,
+    "h": 50,
+    "t": "upi-provisioning worker",
+    "s": "on the hub",
+    "k": "orch"
+  },
+  "job": {
+    "x": 330,
+    "y": 300,
+    "w": 200,
+    "h": 50,
+    "t": "bootstrap-installer Job",
+    "s": "prepare \u00b7 install",
+    "k": "svc"
+  },
+  "argo": {
+    "x": 545,
+    "y": 160,
+    "w": 200,
+    "h": 50,
+    "t": "Argo CD",
+    "s": "the hub's",
+    "k": "svc"
+  },
+  "vc": {
+    "x": 790,
+    "y": 160,
+    "w": 200,
+    "h": 50,
+    "t": "vCenter and DNS",
+    "s": "terraform \u00b7 records",
+    "k": "svc"
+  },
+  "vms": {
+    "x": 545,
+    "y": 420,
+    "w": 200,
+    "h": 50,
+    "t": "Six VMs",
+    "s": "3 infra \u00b7 3 masters",
+    "k": "machine"
+  },
+  "api": {
+    "x": 780,
+    "y": 420,
+    "w": 200,
+    "h": 50,
+    "t": "The cluster's API",
+    "s": "Nodes \u00b7 CSRs \u00b7 ClusterVersion",
+    "k": "machine"
+  }
+};
+const GROUPS = [
+  {
+    "x": 315,
+    "y": 132,
+    "w": 445,
+    "h": 232,
+    "label": "HUB"
+  },
+  {
+    "x": 530,
+    "y": 392,
+    "w": 465,
+    "h": 92,
+    "label": "THE NEW CLUSTER"
+  }
+];
+const RAW   = [
+  [
+    "op",
+    "tmp",
+    "both",
+    "Start the run",
+    "create-upi-cluster-&lt;cluster&gt;",
+    {
+      "call": "POST /workflows/upi-lifecycle/create-upi-cluster",
+      "send": "cluster: ocp4-prod-mce-five-c\nsite: five\nkind: mce   (the default; or standalone)",
+      "warn": "At most 27 characters, bootstrap-installer's limit. The name is the Segments\nManager's cluster, the Argo CD cluster name and, for an MCE, the day1\nfolder: one string."
+    }
+  ],
+  [
+    "tmp",
+    "seg",
+    "BM",
+    "Allocate the networks",
+    "allocating-segment \u00b7 MCE and INVENTORY",
+    {
+      "call": "allocate-segment children, one per type, each on its own id",
+      "send": "POST /api/segments/allocate\n{cluster_name: ocp4-prod-mce-five-c, site: five, type: MCE}\n{cluster_name: ocp4-prod-mce-five-c, site: five, type: INVENTORY}",
+      "recv": "MCE: VLAN 105 \u00b7 10.20.105.0/24 \u00b7 its EPG\nINVENTORY: the BareMetalHost boot network",
+      "warn": "Procedure 01 later resolves the INVENTORY segment by the MCE's name.\nEach child is idempotent per cluster, site and type."
+    }
+  ],
+  [
+    "tmp",
+    "seg",
+    "VM",
+    "Allocate the network",
+    "allocating-segment \u00b7 UPI",
+    {
+      "call": "an allocate-segment child",
+      "send": "POST /api/segments/allocate\n{cluster_name: ocp4-prod-ocp-five-a, site: five, type: UPI}",
+      "recv": "UPI: VLAN 131 \u00b7 10.20.131.0/24 \u00b7 its EPG",
+      "warn": "A standalone cluster has no inventory, so no INVENTORY segment."
+    }
+  ],
+  [
+    "tmp",
+    "wrk",
+    "both",
+    "Hand it to the hub",
+    "run_installer_step(prepare)",
+    {
+      "call": "upi_provisioning.run_installer_step, on the hub's upi-provisioning queue",
+      "send": "step: prepare \u00b7 the segment \u00b7 the site profile \u00b7 install_config overrides",
+      "warn": "The run refuses an install_config key it owns: the cluster name, the\nnetwork, the IPs. Those come from the segment."
+    }
+  ],
+  [
+    "wrk",
+    "job",
+    "both",
+    "Prepare",
+    "preparing \u00b7 Job upi-&lt;cluster&gt;-prepare-&lt;token&gt;",
+    {
+      "call": "bootstrap.py --skip-terraform --skip-argocd",
+      "send": "IPs from the segment: infra .1-.3 \u00b7 masters .4-.6 \u00b7 bootstrap .7 \u00b7 gateway .254",
+      "recv": "install-config, the v4InternalSubnet manifest, the ignition configs,\nthe *.apps DNS record; the admin kubeconfig and the node IPs stored in\nthe hub Secret upi-<cluster>-kubeconfig",
+      "warn": "The run's token is in the Job's name: a retry attaches to the same Job,\na new run makes a new one. Failure: InstallerJobFailedError, with the\nJob's last log lines."
+    }
+  ],
+  [
+    "job",
+    "vc",
+    "both",
+    "Install",
+    "installing \u00b7 Job upi-&lt;cluster&gt;-install-&lt;token&gt;",
+    {
+      "call": "bootstrap.py --skip-ignition --skip-dns --skip-argocd",
+      "send": "terraform apply: the VMs and their DNS records (api, api-int, *.apps)",
+      "warn": "Terraform's state lives on the volume upi-<cluster>-work, never deleted.\nA new prepare refuses a volume whose state still lists resources."
+    }
+  ],
+  [
+    "vc",
+    "vms",
+    "both",
+    "The VMs boot",
+    "bootstrap, then 3 masters and 3 infra",
+    {
+      "call": "vSphere clones the RHCOS template, one VM per node, with its ignition",
+      "recv": "api and api-int round-robin on the masters, *.apps on the infra nodes",
+      "warn": "No VIPs and no load balancer: DNS round-robin only."
+    }
+  ],
+  [
+    "wrk",
+    "api",
+    "both",
+    "Verify the cluster",
+    "verifying-cluster \u00b7 every 20 seconds",
+    {
+      "call": "upi_provisioning.await_upi_cluster_ready, as the cluster's admin",
+      "send": "approve pending CSRs of a node bootstrapper or a system:node:* user",
+      "recv": "every recorded node IP is a Ready Node\nClusterVersion Available, with a version",
+      "warn": "bootstrap-installer's CSR loop exits 0 when its time runs out, so a\nfinished Job proves nothing. After 2 hours: UpiClusterNotReadyError,\nnaming what is missing."
+    }
+  ],
+  [
+    "wrk",
+    "api",
+    "both",
+    "Make argocd-manager",
+    "registering-argocd \u00b7 on the cluster",
+    {
+      "call": "upi_provisioning.register_upi_cluster_in_argocd",
+      "send": "kube-system/argocd-manager, its token, a cluster-admin binding"
+    }
+  ],
+  [
+    "wrk",
+    "argo",
+    "both",
+    "Register in Argo CD",
+    "cluster-&lt;cluster&gt; \u00b7 name: &lt;cluster&gt;",
+    {
+      "call": "create the hub Secret openshift-gitops/cluster-ocp4-prod-mce-five-c, then read it back",
+      "send": "labels: argocd.argoproj.io/secret-type: cluster\nname: ocp4-prod-mce-five-c\nserver: https://api.ocp4-prod-mce-five-c.<base domain>:6443",
+      "warn": "The run registers it, not bootstrap-installer: its oc --server --token call\ncannot verify the hub's certificate from a pod on the hub. A Secret of\nthat name for another server: ArgoClusterSecretConflictError."
+    }
+  ],
+  [
+    "tmp",
+    "cll",
+    "BM",
+    "Publish the MCE folder",
+    "publishing-mce-folder",
+    {
+      "call": "cluster_lifecycle.publish_mce_folder, on branch create-upi-cluster/<cluster>",
+      "send": "sites/five/mces/ocp4-prod-mce-five-c/values.yaml   (the request's mce_values)\nsites/five/mces/ocp4-prod-mce-five-c/version.yaml  (mastertag: the installed version)",
+      "warn": "No site folder: Day1SiteNotFoundError. An MCE folder of that name\nanywhere with other content: MceFolderConflictError."
+    }
+  ],
+  [
+    "cll",
+    "day1",
+    "BM",
+    "Open the merge request",
+    "opening-merge-request \u00b7 found or created",
+    {
+      "call": "cluster_lifecycle.ensure_merge_request, to day1 main",
+      "recv": "!7, open",
+      "warn": "The folder already on main with this run's content is success, and\nopens nothing."
+    }
+  ],
+  [
+    "day1",
+    "day1",
+    "BM",
+    "A person merges",
+    "awaiting-merge \u00b7 polled every 5 minutes",
+    {
+      "call": "cluster_lifecycle.get_merge_request_state",
+      "recv": "merged",
+      "warn": "No deadline: the run continues-as-new while it waits. Closed without\nmerging: MergeRequestClosedError. The cluster stands, registered."
+    }
+  ],
+  [
+    "day1",
+    "argo",
+    "BM",
+    "The ApplicationSet sees it",
+    "&lt;site&gt;-mces",
+    {
+      "call": "the hub's five-mces ApplicationSet generates one Application per folder",
+      "send": "destination.name: ocp4-prod-mce-five-c   (the folder's basename)",
+      "warn": "Which is why the Argo CD cluster name, the day1 folder and the segment's\ncluster are one string."
+    }
+  ],
+  [
+    "argo",
+    "api",
+    "BM",
+    "day1 lands on the MCE",
+    "GitOps operator, infra, LDAP, kubelet, IDMS",
+    {
+      "call": "the Application syncs the MCE's day1 onto the new cluster",
+      "warn": "From then on the MCE's own Argo CD deploys its day2, in-cluster."
+    }
+  ],
+  [
+    "tmp",
+    "op",
+    "both",
+    "Completed",
+    "the cluster, its segments, API and version",
+    {
+      "recv": "cluster \u00b7 site \u00b7 kind \u00b7 API URL \u00b7 version \u00b7 nodes\nsegments \u00b7 Argo CD Secret \u00b7 for an MCE, the merge request",
+      "warn": "Bare-metal workers join later, one run per server: add-server-to-upi\n(procedure 24)."
+    }
+  ]
+];
+const TAGS = {"BM": "mce", "VM": "standalone"};
+const HAS_MODES = true;
+const STEPS = RAW.map(r => ({f:r[0], t:r[1], b:r[2], n:r[3], d:r[4], x:r[5]||null}));
+const esc = s => String(s).replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+
+function showDetail(s){
+  const box=document.getElementById("detail");
+  if(!s){ box.innerHTML='<div class="dh">Exchange</div>'+
+      '<div class="empty">Pick a step, or press play.</div>'; return; }
+  if(!s.x){ box.innerHTML='<div class="dh">Exchange &mdash; '+esc(s.n)+'</div>'+
+      '<div class="empty">Not documented yet for this step.</div>'; return; }
+  let h='<div class="dh">Exchange &mdash; '+esc(s.n)+'</div>';
+  if(s.x.call) h+='<span class="k">Call</span><pre class="call">'+esc(s.x.call)+'</pre>';
+  if(s.x.send) h+='<span class="k">Sends</span><pre>'+esc(s.x.send)+'</pre>';
+  if(s.x.recv) h+='<span class="k">Receives</span><pre>'+esc(s.x.recv)+'</pre>';
+  if(s.x.warn) h+='<span class="k">Watch out</span><pre class="warn">'+esc(s.x.warn)+'</pre>';
+  box.innerHTML=h;
+}
+
+const svg = document.getElementById("svg");
+const NS = "http://www.w3.org/2000/svg";
+const el = (n,a={}) => { const e=document.createElementNS(NS,n);
+  for(const k in a) e.setAttribute(k,a[k]); return e; };
+const cx = n => NODES[n].x + NODES[n].w/2;
+const cy = n => NODES[n].y + NODES[n].h/2;
+
+let mode="BM", idx=-1, playing=false, timer=null;
+const vis = s => s.b==="both" || s.b===mode || (s.b==="IPMI" && mode==="BM");
+const active = () => STEPS.map((s,i)=>i).filter(i=>vis(STEPS[i]));
+
+function drawStatic(){
+  svg.innerHTML='<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4da3ff"/></marker></defs>';
+  GROUPS.forEach(G=>{
+    const g = el("g",{class:"group"});
+    g.appendChild(el("rect",{x:G.x,y:G.y,width:G.w,height:G.h}));
+    const gt = el("text",{x:G.x+14,y:G.y+20}); gt.textContent=G.label;
+    g.appendChild(gt); svg.appendChild(g);
+  });
+  svg.appendChild(el("g",{id:"edges"}));
+  for(const k in NODES){
+    const d=NODES[k];
+    const n=el("g",{class:"node",id:"n_"+k});
+    n.appendChild(el("rect",{x:d.x,y:d.y,width:d.w,height:d.h}));
+    if(d.k){ n.classList.add("k-"+d.k);
+      n.appendChild(el("rect",{x:d.x+1,y:d.y+9,width:4,height:d.h-18,rx:2,class:"kbar"})); }
+    const t=el("text",{x:d.x+d.w/2,y:d.y+d.h/2-3,"text-anchor":"middle"});
+    t.textContent=d.t;
+    if(d.s){ const s=el("tspan",{x:d.x+d.w/2,dy:"15",class:"s"}); s.textContent=d.s;
+             t.appendChild(s); }
+    n.appendChild(t); svg.appendChild(n);
+  }
+  svg.appendChild(el("circle",{id:"dot",r:7,opacity:0}));
+}
+
+function clip(n,tx,ty){ // where the line toward (tx,ty) leaves node n's box
+  const d=NODES[n], x=cx(n), y=cy(n), dx=tx-x, dy=ty-y;
+  const k=Math.min((d.w/2+4)/Math.max(Math.abs(dx),1e-6),
+                   (d.h/2+4)/Math.max(Math.abs(dy),1e-6));
+  return [x+dx*k, y+dy*k];
+}
+function path(a,b){
+  if(a===b){ // self-loop: below the node when it sits near the top edge
+    const d=NODES[a], x=cx(a);
+    if(d.y < 72){ const y=d.y+d.h;
+      return `M ${x-28} ${y} C ${x-40} ${y+46} ${x+40} ${y+46} ${x+28} ${y}`; }
+    const y=d.y;
+    return `M ${x-28} ${y} C ${x-40} ${y-46} ${x+40} ${y-46} ${x+28} ${y}`;
+  }
+  const [x1,y1]=clip(a,cx(b),cy(b)), [x2,y2]=clip(b,cx(a),cy(a));
+  const mx=(x1+x2)/2, my=(y1+y2)/2;
+  const dx=x2-x1, dy=y2-y1, len=Math.hypot(dx,dy)||1;
+  const bow=Math.min(46,len*0.12);
+  return `M ${x1} ${y1} Q ${mx - dy/len*bow} ${my + dx/len*bow} ${x2} ${y2}`;
+}
+
+function render(){
+  document.querySelectorAll(".node").forEach(n=>n.classList.remove("hot","done"));
+  const edges=document.getElementById("edges"); edges.innerHTML="";
+  document.getElementById("dot").setAttribute("opacity",0);
+
+  const act=active(), here=act.indexOf(idx);
+  act.forEach((si,pos)=>{ if(here>=0 && pos<here)
+    document.getElementById("n_"+STEPS[si].t)?.classList.add("done"); });
+  act.forEach((si,pos)=>{ if(here>=0 && pos<here){ const t=STEPS[si];
+    edges.appendChild(el("path",{class:"edge trail",d:path(t.f,t.t)})); } });
+
+  if(idx>=0 && STEPS[idx]){
+    const s=STEPS[idx];
+    const p=el("path",{class:"edge hot",d:path(s.f,s.t)});
+    edges.appendChild(p);
+    document.getElementById("n_"+s.f).classList.add("hot");
+    document.getElementById("n_"+s.t).classList.add("hot");
+
+    const total=p.getTotalLength();
+    const mid=p.getPointAtLength(total*0.5);
+    const a=p.getPointAtLength(Math.max(0,total*0.5-6));
+    const b=p.getPointAtLength(Math.min(total,total*0.5+6));
+    const tx=b.x-a.x, ty=b.y-a.y, tl=Math.hypot(tx,ty)||1;
+    const off=16, lx=mid.x+(-ty/tl*off), ly=mid.y+(tx/tl*off);
+    const w=s.n.length*6.4+14;
+    edges.appendChild(el("rect",{x:lx-w/2,y:ly-11,width:w,height:18,rx:4,
+      fill:"#0e0e11",stroke:"#2c2c35","stroke-width":1}));
+    const lab=el("text",{x:lx,y:ly+2,"text-anchor":"middle",class:"elab"});
+    lab.textContent=s.n; edges.appendChild(lab);
+
+    const dot=document.getElementById("dot");
+    dot.setAttribute("opacity",1);
+    const t0=performance.now(), dur=900;
+    (function anim(now){
+      const k=Math.min(1,(now-t0)/dur);
+      const pt=p.getPointAtLength(total*k);
+      dot.setAttribute("cx",pt.x); dot.setAttribute("cy",pt.y);
+      if(k<1) requestAnimationFrame(anim);
+    })(t0);
+  }
+
+  document.querySelectorAll(".step").forEach(n=>{
+    const i=+n.dataset.i;
+    n.classList.toggle("on", i===idx);
+    n.classList.toggle("off", !vis(STEPS[i]));
+  });
+  showDetail(idx>=0 ? STEPS[idx] : null);
+  document.getElementById("cap").textContent =
+    idx<0 ? act.length+" steps" : "Step "+(act.indexOf(idx)+1)+" of "+act.length;
+}
+
+function buildList(){
+  const box=document.getElementById("steps"); box.innerHTML="";
+  STEPS.forEach((s,i)=>{
+    const d=document.createElement("div");
+    d.className="step"; d.dataset.i=i;
+    d.innerHTML='<span class="num">'+(i+1)+'</span><span class="txt">'+
+      '<span class="nm">'+s.n+'</span><span class="nt">'+s.d+'</span></span>'+
+      (s.b!=="both"?'<span class="tag '+s.b+'">'+(TAGS[s.b]||s.b)+'</span>':'');
+    d.onclick=()=>{ if(vis(s)){ idx=i; stop(); render(); } };
+    box.appendChild(d);
+  });
+}
+
+function go(dir){
+  const act=active(); if(!act.length) return;
+  let p=act.indexOf(idx);
+  p = p<0 ? (dir>0?0:act.length-1) : p+dir;
+  if(p>=act.length){ stop(); idx=act[act.length-1]; render(); return; }
+  if(p<0) p=0;
+  idx=act[p]; render();
+  document.querySelector('.step[data-i="'+idx+'"]')
+    ?.scrollIntoView({block:"nearest",behavior:"smooth"});
+}
+function stop(){ playing=false; clearInterval(timer);
+  document.getElementById("play").textContent="Play"; }
+function play(){
+  if(playing){ stop(); return; }
+  playing=true; document.getElementById("play").textContent="Pause";
+  const act=active();
+  if(idx===act[act.length-1]) idx=-1;
+  go(1);
+  timer=setInterval(()=>{ const a=active();
+    if(idx===a[a.length-1]){ stop(); return; } go(1); },1600);
+}
+function setMode(m){
+  mode=m; stop(); idx=-1;
+  document.getElementById("mBM").classList.toggle("sel",m==="BM");
+  document.getElementById("mVM").classList.toggle("sel",m==="VM");
+  render();
+}
+
+document.getElementById("play").onclick=play;
+document.getElementById("next").onclick=()=>{stop();go(1)};
+document.getElementById("prev").onclick=()=>{stop();go(-1)};
+document.getElementById("rst").onclick=()=>{stop();idx=-1;render()};
+if(HAS_MODES){
+  document.getElementById("modes").style.display="";
+  document.getElementById("mBM").onclick=()=>setMode("BM");
+  document.getElementById("mVM").onclick=()=>setMode("VM");
+}
+document.addEventListener("keydown",e=>{
+  if(e.key==="ArrowRight"){stop();go(1)} if(e.key==="ArrowLeft"){stop();go(-1)}
+  if(e.key===" "){e.preventDefault();play()}
+});
+
+// Build FIRST. setMode() calls render(), which needs the SVG and the step list
+// to exist — doing this earlier throws and aborts the rest of the script.
+drawStatic(); buildList();
+
+// Deep link: #step=7, and #vm to open on the virtual branch. Mode before step,
+// because switching mode resets the position.
+(function(){
+  const h=location.hash.slice(1);
+  if(HAS_MODES && /vm/i.test(h)) setMode("VM");
+  const m=h.match(/step=(\d+)/);
+  if(m){ const i=+m[1]-1; if(STEPS[i] && vis(STEPS[i])) idx=i; }
+})();
+
+render();
+</script>
+</body>
+</html>

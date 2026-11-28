@@ -52,6 +52,7 @@ Base address: `https://idan-maimon.github.io/kubevirt-workflows/docs/animations/
 | 10 | No animation | [10](../procedures/10-create-seed-cluster.md) |
 | 11 | [Add Bare-Metal Node to a Seed Cluster](https://idan-maimon.github.io/kubevirt-workflows/docs/animations/11-add-bm-to-seed-cluster.html) | [11](../procedures/11-add-bm-to-seed-cluster.md) |
 | 12 | No animation | [12](../procedures/12-create-customer-mce.md) |
+| 23 | [Create UPI Cluster](https://idan-maimon.github.io/kubevirt-workflows/docs/animations/23-create-upi-cluster.html) | [23](../procedures/23-create-upi-cluster.md) |
 
 ## Upgrades
 
