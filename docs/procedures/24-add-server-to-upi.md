@@ -1,5 +1,6 @@
 # 24 :: Add Server to UPI Cluster
 
+**Animation:** [`../animations/24-add-server-to-upi.html`](../animations/24-add-server-to-upi.html)
 **Interfaces:** [`00-interfaces.md`](00-interfaces.md) — the inventory API, its install lock, the segment lookup
 **Implementation:** `workflow_domains/upi_lifecycle/add_server_to_upi.py` in `team-redbull/workflows`,
 branch `feat/upi-lifecycle` (not merged yet)

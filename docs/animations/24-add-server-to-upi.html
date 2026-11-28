@@ -1,0 +1,630 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>24 :: Add Server to UPI Cluster</title>
+<style>
+  :root{
+    --bg:#0e0e11; --panel:#16161b; --line:#2c2c35; --ink:#e6e6ec; --dim:#8b8b99;
+    --accent:#4da3ff; --ok:#3ecf8e; --warn:#e8b339; --vm:#b57bff; --bm:#58c7d8;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:14px/1.5 "Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  header{padding:18px 24px 10px;border-bottom:1px solid var(--line)}
+  h1{margin:0;font-size:19px;font-weight:600;letter-spacing:.2px}
+  .sub{color:var(--dim);font-size:13px;margin-top:4px;max-width:900px}
+  .wrap{display:flex;align-items:stretch;min-height:700px}
+  .stage{flex:1;padding:14px 10px 12px 18px;display:flex;flex-direction:column;min-width:0}
+  #svg{width:100%;height:400px;flex:0 0 auto}
+  .detail{margin-top:10px;border:1px solid var(--line);border-radius:8px;background:#121217;
+          padding:11px 14px;flex:1;min-height:210px;max-height:350px;overflow:auto}
+  .dh{color:var(--dim);font-size:10.5px;text-transform:uppercase;letter-spacing:1.2px;
+      margin:0 0 8px;font-weight:600}
+  .k{color:var(--dim);font-size:10px;text-transform:uppercase;letter-spacing:1px;
+     display:block;margin:9px 0 3px}
+  .k:first-of-type{margin-top:0}
+  .detail pre{margin:0;white-space:pre-wrap;word-break:break-word;
+       font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+       font-size:11.5px;line-height:1.55;color:#cfd3da}
+  pre.call{color:var(--accent)}
+  pre.warn{color:var(--warn)}
+  .empty{color:var(--dim);font-style:italic;font-size:12.5px}
+  .side{width:366px;border-left:1px solid var(--line);background:var(--panel);
+        padding:14px 16px;overflow-y:auto;max-height:770px}
+  .side h2{font-size:12px;text-transform:uppercase;letter-spacing:1.2px;
+           color:var(--dim);margin:0 0 10px;font-weight:600}
+  .step{padding:8px 10px;border-radius:6px;cursor:pointer;display:flex;gap:9px;
+        border:1px solid transparent;margin-bottom:3px}
+  .step:hover{background:#1e1e25}
+  .step.on{background:#1b2838;border-color:var(--accent)}
+  .step.off{opacity:.3}
+  .num{color:var(--dim);font-variant-numeric:tabular-nums;min-width:22px;font-size:12px}
+  .step.on .num{color:var(--accent)}
+  .txt{flex:1}
+  .nm{font-weight:500;display:block}
+  .nt{color:var(--dim);font-size:12px;margin-top:2px;display:block}
+  .tag{font-size:10px;padding:1px 6px;border-radius:99px;border:1px solid var(--line);
+       color:var(--dim);align-self:flex-start;margin-top:2px}
+  .tag.VM{color:var(--vm);border-color:var(--vm)}
+  .tag.BM{color:var(--bm);border-color:var(--bm)}
+  .tag.IPMI{color:var(--warn);border-color:var(--warn)}
+  footer{display:flex;gap:10px;align-items:center;padding:12px 18px;
+         border-top:1px solid var(--line);flex-wrap:wrap}
+  button{background:#1e1e25;color:var(--ink);border:1px solid var(--line);
+         border-radius:6px;padding:7px 14px;cursor:pointer;font-size:13px}
+  button:hover{border-color:var(--accent)}
+  button.pri{background:var(--accent);border-color:var(--accent);color:#06121f;font-weight:600}
+  .seg{display:inline-flex;border:1px solid var(--line);border-radius:6px;overflow:hidden}
+  .seg button{border:0;border-radius:0}
+  .seg button.sel{background:#2a3a4d;color:var(--accent)}
+  .spacer{flex:1}
+  .caption{color:var(--dim);font-size:12px}
+  text{font-family:"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+  .node rect{fill:#191920;stroke:var(--line);stroke-width:1.5;rx:8}
+  .node.hot rect{stroke:var(--accent);stroke-width:2.5;fill:#1b2838}
+  .node.done rect{stroke:#2f5d48}
+  .node text{fill:var(--ink);font-size:13px;font-weight:500}
+  .node tspan.s{fill:var(--dim);font-size:11px;font-weight:400}
+  .group rect{fill:none;stroke:var(--line);stroke-dasharray:4 4;rx:10}
+  .group text{fill:var(--dim);font-size:11px;letter-spacing:1px}
+  .edge{stroke:#3a3a46;stroke-width:1.5;fill:none}
+  .edge.hot{stroke:var(--accent);stroke-width:2.5}
+  .elab{fill:var(--accent);font-size:11.5px;font-weight:500}
+  #dot{fill:var(--accent);filter:drop-shadow(0 0 6px var(--accent))}
+
+  #svg{height:470px}
+  .node text{font-size:14px}
+  .node .kbar,.node.hot .kbar,.node.done .kbar{stroke:none}
+  .node.k-actor .kbar{fill:#3ecf8e} .node.k-orch .kbar{fill:#4da3ff}
+  .node.k-svc .kbar{fill:#58c7d8}   .node.k-hub .kbar{fill:#b57bff}
+  .node.k-machine .kbar{fill:#e8b339}
+  .edge.trail{stroke:#4da3ff;stroke-opacity:.25;stroke-width:1.5;stroke-dasharray:5 4}
+  .edge.hot{marker-end:url(#ah)}
+  .legend{display:flex;flex-wrap:wrap;gap:16px;margin-top:9px;font-size:11.5px;color:var(--dim)}
+  .legend i{display:inline-block;width:10px;height:10px;border-radius:3px;margin-right:6px;
+            vertical-align:-1px}
+</style>
+</head>
+<body>
+<header>
+  <h1>24 :: Add Server to UPI Cluster</h1>
+  <div class="sub">One bare-metal server joins a user-provisioned cluster as a Node of that cluster: an oc adm node-image create ISO with bond0 over its two link-up NICs, served by the worker inside the cluster and booted from the server's virtual media. Only this host's CSRs are approved.</div>
+  <div class="legend">
+    <span><i style="background:#3ecf8e"></i>requester</span>
+    <span><i style="background:#4da3ff"></i>orchestration</span>
+    <span><i style="background:#58c7d8"></i>service</span>
+    <span><i style="background:#b57bff"></i>MCE object</span>
+    <span><i style="background:#e8b339"></i>machine</span>
+    <span><i style="border:1px dashed #4da3ff"></i>path so far</span>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="stage">
+    <svg id="svg" viewBox="0 0 1000 560"
+         xmlns="http://www.w3.org/2000/svg" aria-label="Workflow diagram"></svg>
+    <div class="detail" id="detail"></div>
+  </div>
+  <aside class="side">
+    <h2>Steps</h2>
+    <div id="steps"></div>
+  </aside>
+</div>
+
+<footer>
+  <button class="pri" id="play">Play</button>
+  <button id="prev">Prev</button>
+  <button id="next">Next</button>
+  <button id="rst">Restart</button>
+  <span id="modes" style="display:none">
+    <span class="caption">The server</span>
+    <span class="seg">
+      <button id="mBM" class="sel">Joins</button>
+      <button id="mVM">Already a Node</button>
+    </span>
+  </span>
+  <div class="spacer"></div>
+  <span class="caption" id="cap"></span>
+</footer>
+
+<script>
+const NODES = {
+  "op": {
+    "x": 20,
+    "y": 30,
+    "w": 200,
+    "h": 50,
+    "t": "Operator",
+    "s": "names a server",
+    "k": "actor"
+  },
+  "tmp": {
+    "x": 385,
+    "y": 30,
+    "w": 250,
+    "h": 50,
+    "t": "Temporal",
+    "s": "add-server-to-upi-<cluster>_<server>",
+    "k": "orch"
+  },
+  "seg": {
+    "x": 780,
+    "y": 30,
+    "w": 200,
+    "h": 50,
+    "t": "Segments Manager",
+    "s": "the node VLAN",
+    "k": "svc"
+  },
+  "scan": {
+    "x": 20,
+    "y": 170,
+    "w": 200,
+    "h": 50,
+    "t": "server-scan",
+    "s": "lock \u00b7 interfaces[]",
+    "k": "svc"
+  },
+  "wrk": {
+    "x": 330,
+    "y": 160,
+    "w": 210,
+    "h": 50,
+    "t": "upi-server worker",
+    "s": "upi-server-activity-<cluster>",
+    "k": "orch"
+  },
+  "api": {
+    "x": 330,
+    "y": 330,
+    "w": 210,
+    "h": 50,
+    "t": "The cluster's API",
+    "s": "CSRs \u00b7 Nodes",
+    "k": "svc"
+  },
+  "ni": {
+    "x": 570,
+    "y": 160,
+    "w": 190,
+    "h": 50,
+    "t": "node-image",
+    "s": "oc adm node-image create",
+    "k": "svc"
+  },
+  "ngx": {
+    "x": 570,
+    "y": 290,
+    "w": 190,
+    "h": 50,
+    "t": "nginx sidecar",
+    "s": "http://<route>/<host>.iso",
+    "k": "svc"
+  },
+  "bmc": {
+    "x": 800,
+    "y": 290,
+    "w": 180,
+    "h": 50,
+    "t": "BMC",
+    "s": "Redfish virtual media",
+    "k": "machine"
+  },
+  "srv": {
+    "x": 800,
+    "y": 410,
+    "w": 180,
+    "h": 50,
+    "t": "The server",
+    "s": "bond0 \u00b7 bond0.<vlan>",
+    "k": "machine"
+  }
+};
+const GROUPS = [
+  {
+    "x": 315,
+    "y": 132,
+    "w": 460,
+    "h": 268,
+    "label": "THE UPI CLUSTER"
+  }
+];
+const RAW   = [
+  [
+    "op",
+    "tmp",
+    "both",
+    "Start the run",
+    "add-server-to-upi-&lt;cluster&gt;_&lt;server&gt;",
+    {
+      "call": "POST /workflows/upi-lifecycle/add-server-to-upi",
+      "send": "cluster: ocp4-prod-mce-five-c\nserver_name: OCP-C200-MTL-FIVE-7XK2M33\nnode_labels: {node-role.kubernetes.io/infra: \"\"}",
+      "warn": "One Node per run: N servers are N runs. Not a hosted cluster's worker,\nwhich is a NodePool change (procedure 04)."
+    }
+  ],
+  [
+    "tmp",
+    "seg",
+    "both",
+    "Resolve the VLAN",
+    "resolving-network \u00b7 MCE, then UPI",
+    {
+      "call": "segment_lifecycle.find_cluster_allocation, for the cluster",
+      "recv": "MCE segment \u00b7 VLAN 105 \u00b7 dhcp: true",
+      "warn": "Nothing is locked yet. No segment: UpiNetworkNotFoundError.\ndhcp: false: SegmentWithoutDhcpError."
+    }
+  ],
+  [
+    "tmp",
+    "wrk",
+    "both",
+    "To the cluster's worker",
+    "its own queue",
+    {
+      "call": "activities on upi-server-activity-ocp4-prod-mce-five-c",
+      "warn": "The worker runs inside the target cluster. Until it polls, the\nactivity waits, pending."
+    }
+  ],
+  [
+    "wrk",
+    "scan",
+    "both",
+    "Lock the server",
+    "allocating-server \u00b7 4 hours",
+    {
+      "call": "upi_server.allocate_upi_server -> POST /servers/available",
+      "send": "name: OCP-C200-MTL-FIVE-7XK2M33 \u00b7 holder: add-server-to-upi \u00b7 ttl: 4h",
+      "recv": "BMC endpoint and vendor\ninterfaces[]: name, MAC, port, link state",
+      "warn": "Live-checked by server-scan. Refused: ServerNotAvailableError,\nServerReservedError."
+    }
+  ],
+  [
+    "tmp",
+    "tmp",
+    "both",
+    "Choose the bond",
+    "selecting-bond \u00b7 in the workflow",
+    {
+      "call": "two link-UP NICs on two distinct physical ports, from interfaces[]",
+      "recv": "nic1 aa:bb:cc:00:00:01 \u00b7 nic2 aa:bb:cc:00:00:02",
+      "warn": "Never from the MAC list (procedure 00): the rule is 01's, reused.\nIPMI BMC: VirtualMediaUnsupportedError. No bond:\nNoBondableInterfacesError. Each gives the lock back first."
+    }
+  ],
+  [
+    "wrk",
+    "api",
+    "BM",
+    "Is it a Node?",
+    "checking-cluster",
+    {
+      "call": "upi_server.inspect_upi_node -> GET /api/v1/nodes/ocp-c200-mtl-five-7xk2m33",
+      "recv": "404: build the ISO"
+    }
+  ],
+  [
+    "wrk",
+    "api",
+    "VM",
+    "Already a Node",
+    "checking-cluster \u00b7 straight to finishing",
+    {
+      "call": "upi_server.inspect_upi_node -> GET /api/v1/nodes/ocp-c200-mtl-five-7xk2m33",
+      "recv": "Ready",
+      "warn": "A re-run after the join resumes here: no build, no boot, no join."
+    }
+  ],
+  [
+    "wrk",
+    "ni",
+    "BM",
+    "Build the ISO",
+    "building-iso \u00b7 as the worker's ServiceAccount",
+    {
+      "call": "upi_server.build_node_iso -> oc adm node-image create --dir <work>",
+      "send": "nodes-config.yaml: hostname, rootDeviceHints /dev/sda\ninterfaces: nic1, nic2 by MAC\nbond0 802.3ad over nic1 and nic2 \u00b7 bond0.105, DHCP",
+      "recv": "ocp-c200-mtl-five-7xk2m33.iso, next to its config's hash",
+      "warn": "Keyed on the hash: the same host with the same config is built once.\nFailure: NodeImageBuildError, with oc's message."
+    }
+  ],
+  [
+    "ni",
+    "ngx",
+    "BM",
+    "Serve it",
+    "the worker's volume \u00b7 plain-HTTP Route",
+    {
+      "recv": "http://upi-server-worker.apps.ocp4-prod-mce-five-c.<base domain>/\n     ocp-c200-mtl-five-7xk2m33.iso",
+      "warn": "Plain HTTP, because BMCs refuse a certificate they do not trust. The ISO\ncarries the cluster's ignition endpoint, not its credentials."
+    }
+  ],
+  [
+    "wrk",
+    "bmc",
+    "BM",
+    "Insert the ISO",
+    "booting \u00b7 Redfish, discovered",
+    {
+      "call": "upi_server.boot_from_virtual_media",
+      "send": "VirtualMedia.EjectMedia   (whatever the CD slot holds)\nVirtualMedia.InsertMedia  {Image: <the ISO's URL>}   then read back\nPATCH Boot {BootSourceOverrideTarget: Cd, BootSourceOverrideEnabled: Once}\nComputerSystem.Reset      {ResetType: ForceRestart, or On}",
+      "warn": "The system, the CD slot and every action are read from the BMC, not\nhard-coded per vendor. RedfishAuthError, VirtualMediaUnavailableError,\nBmcCredentialsMissingError."
+    }
+  ],
+  [
+    "bmc",
+    "ngx",
+    "BM",
+    "The BMC fetches it",
+    "over HTTP",
+    {
+      "call": "GET http://upi-server-worker.apps.../ocp-c200-mtl-five-7xk2m33.iso",
+      "warn": "Not checked beforehand: a BMC that cannot reach the cluster's *.apps\nnever boots the ISO, and the join times out (open question 2)."
+    }
+  ],
+  [
+    "bmc",
+    "srv",
+    "BM",
+    "Boot from CD",
+    "once",
+    {
+      "call": "the server boots the ISO",
+      "recv": "nic1 and nic2 renamed by MAC, bond0 up, DHCP lease on bond0.105\nRHCOS written to /dev/sda, a reboot, the worker ignition fetched"
+    }
+  ],
+  [
+    "srv",
+    "api",
+    "BM",
+    "Approve its CSRs",
+    "joining \u00b7 every 15 seconds",
+    {
+      "call": "upi_server.await_node_joined",
+      "send": "approve: the node bootstrapper's client CSR for system:node:ocp-c200-mtl-five-7xk2m33\napprove: the serving CSR requested by system:node:ocp-c200-mtl-five-7xk2m33",
+      "recv": "Node ocp-c200-mtl-five-7xk2m33 Ready",
+      "warn": "Only this host's, by subject and by requester: any other pending CSR\nis left alone. After join_timeout_minutes (90): NodeJoinTimeoutError."
+    }
+  ],
+  [
+    "wrk",
+    "api",
+    "both",
+    "Label the Node",
+    "finishing",
+    {
+      "call": "upi_server.finish_upi_node",
+      "send": "node_labels, then read back",
+      "recv": "node-role.kubernetes.io/infra: \"\""
+    }
+  ],
+  [
+    "wrk",
+    "bmc",
+    "BM",
+    "Eject, delete the ISO",
+    "best effort",
+    {
+      "call": "VirtualMedia.EjectMedia \u00b7 remove ocp-c200-mtl-five-7xk2m33.iso"
+    }
+  ],
+  [
+    "wrk",
+    "scan",
+    "both",
+    "Extend the lock",
+    "a day",
+    {
+      "call": "upi_server.extend_upi_server_lock -> 24h",
+      "warn": "So no run draws the server again before server-scan sees it in the\ncluster."
+    }
+  ],
+  [
+    "tmp",
+    "op",
+    "both",
+    "Completed",
+    "the Node, its VLAN and bond",
+    {
+      "recv": "Node: name, InternalIP, Ready, roles\nVLAN 105 \u00b7 the bond's two MACs \u00b7 the CSRs approved \u00b7 already_joined",
+      "warn": "There is no removal path yet: draining, deleting the Node, wiping the\ndisk (AD23) and releasing the server (open question 3)."
+    }
+  ]
+];
+const TAGS = {"BM": "joins", "VM": "already in"};
+const HAS_MODES = true;
+const STEPS = RAW.map(r => ({f:r[0], t:r[1], b:r[2], n:r[3], d:r[4], x:r[5]||null}));
+const esc = s => String(s).replace(/[&<>]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+
+function showDetail(s){
+  const box=document.getElementById("detail");
+  if(!s){ box.innerHTML='<div class="dh">Exchange</div>'+
+      '<div class="empty">Pick a step, or press play.</div>'; return; }
+  if(!s.x){ box.innerHTML='<div class="dh">Exchange &mdash; '+esc(s.n)+'</div>'+
+      '<div class="empty">Not documented yet for this step.</div>'; return; }
+  let h='<div class="dh">Exchange &mdash; '+esc(s.n)+'</div>';
+  if(s.x.call) h+='<span class="k">Call</span><pre class="call">'+esc(s.x.call)+'</pre>';
+  if(s.x.send) h+='<span class="k">Sends</span><pre>'+esc(s.x.send)+'</pre>';
+  if(s.x.recv) h+='<span class="k">Receives</span><pre>'+esc(s.x.recv)+'</pre>';
+  if(s.x.warn) h+='<span class="k">Watch out</span><pre class="warn">'+esc(s.x.warn)+'</pre>';
+  box.innerHTML=h;
+}
+
+const svg = document.getElementById("svg");
+const NS = "http://www.w3.org/2000/svg";
+const el = (n,a={}) => { const e=document.createElementNS(NS,n);
+  for(const k in a) e.setAttribute(k,a[k]); return e; };
+const cx = n => NODES[n].x + NODES[n].w/2;
+const cy = n => NODES[n].y + NODES[n].h/2;
+
+let mode="BM", idx=-1, playing=false, timer=null;
+const vis = s => s.b==="both" || s.b===mode || (s.b==="IPMI" && mode==="BM");
+const active = () => STEPS.map((s,i)=>i).filter(i=>vis(STEPS[i]));
+
+function drawStatic(){
+  svg.innerHTML='<defs><marker id="ah" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0,0 L10,5 L0,10 z" fill="#4da3ff"/></marker></defs>';
+  GROUPS.forEach(G=>{
+    const g = el("g",{class:"group"});
+    g.appendChild(el("rect",{x:G.x,y:G.y,width:G.w,height:G.h}));
+    const gt = el("text",{x:G.x+14,y:G.y+20}); gt.textContent=G.label;
+    g.appendChild(gt); svg.appendChild(g);
+  });
+  svg.appendChild(el("g",{id:"edges"}));
+  for(const k in NODES){
+    const d=NODES[k];
+    const n=el("g",{class:"node",id:"n_"+k});
+    n.appendChild(el("rect",{x:d.x,y:d.y,width:d.w,height:d.h}));
+    if(d.k){ n.classList.add("k-"+d.k);
+      n.appendChild(el("rect",{x:d.x+1,y:d.y+9,width:4,height:d.h-18,rx:2,class:"kbar"})); }
+    const t=el("text",{x:d.x+d.w/2,y:d.y+d.h/2-3,"text-anchor":"middle"});
+    t.textContent=d.t;
+    if(d.s){ const s=el("tspan",{x:d.x+d.w/2,dy:"15",class:"s"}); s.textContent=d.s;
+             t.appendChild(s); }
+    n.appendChild(t); svg.appendChild(n);
+  }
+  svg.appendChild(el("circle",{id:"dot",r:7,opacity:0}));
+}
+
+function clip(n,tx,ty){ // where the line toward (tx,ty) leaves node n's box
+  const d=NODES[n], x=cx(n), y=cy(n), dx=tx-x, dy=ty-y;
+  const k=Math.min((d.w/2+4)/Math.max(Math.abs(dx),1e-6),
+                   (d.h/2+4)/Math.max(Math.abs(dy),1e-6));
+  return [x+dx*k, y+dy*k];
+}
+function path(a,b){
+  if(a===b){ // self-loop: below the node when it sits near the top edge
+    const d=NODES[a], x=cx(a);
+    if(d.y < 72){ const y=d.y+d.h;
+      return `M ${x-28} ${y} C ${x-40} ${y+46} ${x+40} ${y+46} ${x+28} ${y}`; }
+    const y=d.y;
+    return `M ${x-28} ${y} C ${x-40} ${y-46} ${x+40} ${y-46} ${x+28} ${y}`;
+  }
+  const [x1,y1]=clip(a,cx(b),cy(b)), [x2,y2]=clip(b,cx(a),cy(a));
+  const mx=(x1+x2)/2, my=(y1+y2)/2;
+  const dx=x2-x1, dy=y2-y1, len=Math.hypot(dx,dy)||1;
+  const bow=Math.min(46,len*0.12);
+  return `M ${x1} ${y1} Q ${mx - dy/len*bow} ${my + dx/len*bow} ${x2} ${y2}`;
+}
+
+function render(){
+  document.querySelectorAll(".node").forEach(n=>n.classList.remove("hot","done"));
+  const edges=document.getElementById("edges"); edges.innerHTML="";
+  document.getElementById("dot").setAttribute("opacity",0);
+
+  const act=active(), here=act.indexOf(idx);
+  act.forEach((si,pos)=>{ if(here>=0 && pos<here)
+    document.getElementById("n_"+STEPS[si].t)?.classList.add("done"); });
+  act.forEach((si,pos)=>{ if(here>=0 && pos<here){ const t=STEPS[si];
+    edges.appendChild(el("path",{class:"edge trail",d:path(t.f,t.t)})); } });
+
+  if(idx>=0 && STEPS[idx]){
+    const s=STEPS[idx];
+    const p=el("path",{class:"edge hot",d:path(s.f,s.t)});
+    edges.appendChild(p);
+    document.getElementById("n_"+s.f).classList.add("hot");
+    document.getElementById("n_"+s.t).classList.add("hot");
+
+    const total=p.getTotalLength();
+    const mid=p.getPointAtLength(total*0.5);
+    const a=p.getPointAtLength(Math.max(0,total*0.5-6));
+    const b=p.getPointAtLength(Math.min(total,total*0.5+6));
+    const tx=b.x-a.x, ty=b.y-a.y, tl=Math.hypot(tx,ty)||1;
+    const off=16, lx=mid.x+(-ty/tl*off), ly=mid.y+(tx/tl*off);
+    const w=s.n.length*6.4+14;
+    edges.appendChild(el("rect",{x:lx-w/2,y:ly-11,width:w,height:18,rx:4,
+      fill:"#0e0e11",stroke:"#2c2c35","stroke-width":1}));
+    const lab=el("text",{x:lx,y:ly+2,"text-anchor":"middle",class:"elab"});
+    lab.textContent=s.n; edges.appendChild(lab);
+
+    const dot=document.getElementById("dot");
+    dot.setAttribute("opacity",1);
+    const t0=performance.now(), dur=900;
+    (function anim(now){
+      const k=Math.min(1,(now-t0)/dur);
+      const pt=p.getPointAtLength(total*k);
+      dot.setAttribute("cx",pt.x); dot.setAttribute("cy",pt.y);
+      if(k<1) requestAnimationFrame(anim);
+    })(t0);
+  }
+
+  document.querySelectorAll(".step").forEach(n=>{
+    const i=+n.dataset.i;
+    n.classList.toggle("on", i===idx);
+    n.classList.toggle("off", !vis(STEPS[i]));
+  });
+  showDetail(idx>=0 ? STEPS[idx] : null);
+  document.getElementById("cap").textContent =
+    idx<0 ? act.length+" steps" : "Step "+(act.indexOf(idx)+1)+" of "+act.length;
+}
+
+function buildList(){
+  const box=document.getElementById("steps"); box.innerHTML="";
+  STEPS.forEach((s,i)=>{
+    const d=document.createElement("div");
+    d.className="step"; d.dataset.i=i;
+    d.innerHTML='<span class="num">'+(i+1)+'</span><span class="txt">'+
+      '<span class="nm">'+s.n+'</span><span class="nt">'+s.d+'</span></span>'+
+      (s.b!=="both"?'<span class="tag '+s.b+'">'+(TAGS[s.b]||s.b)+'</span>':'');
+    d.onclick=()=>{ if(vis(s)){ idx=i; stop(); render(); } };
+    box.appendChild(d);
+  });
+}
+
+function go(dir){
+  const act=active(); if(!act.length) return;
+  let p=act.indexOf(idx);
+  p = p<0 ? (dir>0?0:act.length-1) : p+dir;
+  if(p>=act.length){ stop(); idx=act[act.length-1]; render(); return; }
+  if(p<0) p=0;
+  idx=act[p]; render();
+  document.querySelector('.step[data-i="'+idx+'"]')
+    ?.scrollIntoView({block:"nearest",behavior:"smooth"});
+}
+function stop(){ playing=false; clearInterval(timer);
+  document.getElementById("play").textContent="Play"; }
+function play(){
+  if(playing){ stop(); return; }
+  playing=true; document.getElementById("play").textContent="Pause";
+  const act=active();
+  if(idx===act[act.length-1]) idx=-1;
+  go(1);
+  timer=setInterval(()=>{ const a=active();
+    if(idx===a[a.length-1]){ stop(); return; } go(1); },1600);
+}
+function setMode(m){
+  mode=m; stop(); idx=-1;
+  document.getElementById("mBM").classList.toggle("sel",m==="BM");
+  document.getElementById("mVM").classList.toggle("sel",m==="VM");
+  render();
+}
+
+document.getElementById("play").onclick=play;
+document.getElementById("next").onclick=()=>{stop();go(1)};
+document.getElementById("prev").onclick=()=>{stop();go(-1)};
+document.getElementById("rst").onclick=()=>{stop();idx=-1;render()};
+if(HAS_MODES){
+  document.getElementById("modes").style.display="";
+  document.getElementById("mBM").onclick=()=>setMode("BM");
+  document.getElementById("mVM").onclick=()=>setMode("VM");
+}
+document.addEventListener("keydown",e=>{
+  if(e.key==="ArrowRight"){stop();go(1)} if(e.key==="ArrowLeft"){stop();go(-1)}
+  if(e.key===" "){e.preventDefault();play()}
+});
+
+// Build FIRST. setMode() calls render(), which needs the SVG and the step list
+// to exist — doing this earlier throws and aborts the rest of the script.
+drawStatic(); buildList();
+
+// Deep link: #step=7, and #vm to open on the virtual branch. Mode before step,
+// because switching mode resets the position.
+(function(){
+  const h=location.hash.slice(1);
+  if(HAS_MODES && /vm/i.test(h)) setMode("VM");
+  const m=h.match(/step=(\d+)/);
+  if(m){ const i=+m[1]-1; if(STEPS[i] && vis(STEPS[i])) idx=i; }
+})();
+
+render();
+</script>
+</body>
+</html>
