@@ -29,7 +29,7 @@ All names are lowercase (Kubernetes names must be).
 | `id` | Cluster: a sequence letter, `a` to `z` |
 | `serial` | Node: the server's serial number for bare metal. For a VM, 8 random lowercase letters and digits, drawn by `create-vm` when it builds the VM and also written as the VM's SMBIOS serial |
 | `clusterName` | NodePool: the HostedCluster's `clusterName`, the cluster's day1 file name without `ocp4-`, e.g. `prod-solr-five-a` |
-| `role` | NodePool: what the pool's nodes are for inside their cluster, one lowercase word with no dash, e.g. `primary`, `replica`. Required when two NodePools of one cluster draw from the same InfraEnv ([NodePool roles](#nodepool-roles)) |
+| `role` | NodePool: what the pool's nodes are for inside their cluster. Free text, typed by the requester: one lowercase word with no dash, e.g. `primary`, `replica`. Required when two NodePools of one cluster draw from the same InfraEnv ([NodePool roles](#nodepool-roles)) |
 
 ### Cluster flavors
 
@@ -89,14 +89,31 @@ its own:
 | Supply | The NodePool's waiting workers | The Inventory Controller orders machines per NodePool (AD26), so one role's waiting workers never wait on the other's |
 | Upgrade | The NodePool's version | Upgrade one role, let it soak, then the other ([13](procedures/13-upgrade-hosted-cluster-workers.md)) |
 
+**How the name is entered.** Nobody types a NodePool name. The requester, in Wingman or in the
+request to `create-hosted-cluster` ([03](procedures/03-create-hosted-cluster.md)), picks two parts from
+lists and types one; the name is composed from them:
+
+| Part | Entered as | Values |
+|---|---|---|
+| `clusterName` | Known: the cluster being created or changed | `prod-solr-five-a` |
+| Node type, `<flavor>-<mtl\|kv<cpu>>` | Selected from a list: the node types the cluster's MCE has InfraEnvs for | `c200-mtl`, `c200-kv32` |
+| Zone | Selected from a list: the zones that node type has an InfraEnv in | `az1`, `az2`, `az3` |
+| Role | **Free text**, optional | Any word the cluster's owner chooses, e.g. `primary`, `replica`, `ingest` |
+
+Node type and zone together are the InfraEnv's name, so a composed name always points at an
+InfraEnv that exists. The role is the one free part, which is why it has rules of its own (below).
+[04](procedures/04-update-nodepool.md) then changes a NodePool by its composed name, chosen from the
+cluster's NodePools.
+
 **Decode and prefill.** The role is the name's last part. An InfraEnv name always has three parts
 (`<flavor>-<mtl|kv<cpu>>-<zone>`) and the `clusterName` is known, so any NodePool name decodes into
 cluster, flavor, size, zone and role. That makes the role usable by tools, not only by people:
 
-- **Prefill.** Wingman, or the workflow writing the file, builds the whole entry from the name: the
-  InfraEnv (`infraEnvName`), the zone and role labels (`nodeLabels`), and the tuning for the role
-  from a per-role preset (`tuningConfig`, `configs`). Asking for `c200-mtl-az1-primary` on a Solr
-  cluster is enough.
+- **Prefill.** Wingman, or the workflow writing the file, builds the whole entry from the three
+  choices: the InfraEnv (`infraEnvName`), the zone and role labels (`nodeLabels`), and the role's
+  tuning (`tuningConfig`, `configs`) when a preset of that name exists, e.g. `solr-primary` for the
+  role `primary` on a Solr cluster. A role is free text, so most roles have no preset: such a
+  NodePool gets its labels and no tuning until one is chosen.
 - **Check.** day1 CI or `provision-cluster` refuses an entry whose `redbull.io/nodepool-role` label
   differs from its name's role (rule 7, section 3.4).
 - **Report.** Nodes, Machines and inventory group by role without reading any NodePool's spec.
@@ -105,8 +122,10 @@ Rules for the suffix:
 
 1. Optional when the cluster has one NodePool on that InfraEnv; **required** on every NodePool of
    the cluster that shares its InfraEnv with another.
-2. One lowercase word, `[a-z0-9]+`, no dash, so the name decodes without ambiguity. Short: it
-   lengthens the NodePool's, Machines' and Nodes' names.
+2. Free text, checked where it is typed: one lowercase word, `[a-z0-9]+`, no dash, so the name
+   decodes without ambiguity. Short: the whole NodePool name stays within 63 characters, because
+   HyperShift labels each of its Nodes with it (`hypershift.openshift.io/nodePool`) and a label
+   value is at most 63.
 3. The same role on every zone's NodePool: `…-c200-mtl-az1-primary`, `…-c200-mtl-az2-primary`,
    `…-c200-mtl-az3-primary`. The role is the job, the zone is where.
 4. The day1 entry sets `name` explicitly, which the chart uses as it is, and carries the role in
