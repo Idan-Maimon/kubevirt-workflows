@@ -1009,6 +1009,133 @@ WORKFLOWS["11-add-bm-to-seed-cluster"] = dict(
       ("seed","seed","both","Await ready","Workloads schedule onto it."),
     ])
 
+WORKFLOWS["23-create-upi-cluster"] = dict(
+    title="23 :: Create UPI Cluster",
+    subtitle="One user-provisioned cluster, platform none, from its name to the moment Argo CD manages "
+             "it: the team's bootstrap-installer run as Jobs on the hub, readiness checked by the run, "
+             "and for an MCE its day1 folder merged. An MCE is one kind of UPI cluster.",
+    look="v2",
+    mode_labels=("Kind", "mce", "standalone"),
+    tags={"BM": "mce", "VM": "standalone"},
+    nodes={"op":   NK(20, 30, "Operator or Wingman", "names the cluster", "actor"),
+           "tmp":  NK(385, 30, "Temporal", "create-upi-cluster-<cluster>", "orch", 230),
+           "seg":  NK(780, 30, "Segments Manager", "via allocate-segment", "svc"),
+           "cll":  NK(20, 190, "cluster-lifecycle limb", "holds the day1 token", "orch"),
+           "day1": NK(20, 330, "day1 repo", "sites/<site>/mces/<cluster>/", "svc"),
+           "wrk":  NK(330, 160, "upi-provisioning worker", "on the hub", "orch"),
+           "job":  NK(330, 300, "bootstrap-installer Job", "prepare · install", "svc"),
+           "argo": NK(545, 160, "Argo CD", "the hub's", "svc"),
+           "vc":   NK(790, 160, "vCenter and DNS", "terraform · records", "svc"),
+           "vms":  NK(545, 420, "Six VMs", "3 infra · 3 masters", "machine"),
+           "api":  NK(780, 420, "The cluster's API", "Nodes · CSRs · ClusterVersion", "machine")},
+    group=[{"x": 315, "y": 132, "w": 445, "h": 232, "label": "HUB"},
+           {"x": 530, "y": 392, "w": 465, "h": 92, "label": "THE NEW CLUSTER"}],
+    steps=[
+      ("op","tmp","both","Start the run","create-upi-cluster-&lt;cluster&gt;",
+       {"call":"POST /workflows/upi-lifecycle/create-upi-cluster",
+        "send":"cluster: ocp4-prod-mce-five-c\nsite: five\nkind: mce   (the default; or standalone)",
+        "warn":"At most 27 characters, bootstrap-installer's limit. The name is the Segments\n"
+               "Manager's cluster, the Argo CD cluster name and, for an MCE, the day1\n"
+               "folder: one string."}),
+
+      ("tmp","seg","BM","Allocate the networks","allocating-segment · MCE and INVENTORY",
+       {"call":"allocate-segment children, one per type, each on its own id",
+        "send":"POST /api/segments/allocate\n"
+               "{cluster_name: ocp4-prod-mce-five-c, site: five, type: MCE}\n"
+               "{cluster_name: ocp4-prod-mce-five-c, site: five, type: INVENTORY}",
+        "recv":"MCE: VLAN 105 · 10.20.105.0/24 · its EPG\nINVENTORY: the BareMetalHost boot network",
+        "warn":"Procedure 01 later resolves the INVENTORY segment by the MCE's name.\n"
+               "Each child is idempotent per cluster, site and type."}),
+
+      ("tmp","seg","VM","Allocate the network","allocating-segment · UPI",
+       {"call":"an allocate-segment child",
+        "send":"POST /api/segments/allocate\n{cluster_name: ocp4-prod-ocp-five-a, site: five, type: UPI}",
+        "recv":"UPI: VLAN 131 · 10.20.131.0/24 · its EPG",
+        "warn":"A standalone cluster has no inventory, so no INVENTORY segment."}),
+
+      ("tmp","wrk","both","Hand it to the hub","run_installer_step(prepare)",
+       {"call":"upi_provisioning.run_installer_step, on the hub's upi-provisioning queue",
+        "send":"step: prepare · the segment · the site profile · install_config overrides",
+        "warn":"The run refuses an install_config key it owns: the cluster name, the\n"
+               "network, the IPs. Those come from the segment."}),
+
+      ("wrk","job","both","Prepare","preparing · Job upi-&lt;cluster&gt;-prepare-&lt;token&gt;",
+       {"call":"bootstrap.py --skip-terraform --skip-argocd",
+        "send":"IPs from the segment: infra .1-.3 · masters .4-.6 · bootstrap .7 · gateway .254",
+        "recv":"install-config, the v4InternalSubnet manifest, the ignition configs,\n"
+               "the *.apps DNS record; the admin kubeconfig and the node IPs stored in\n"
+               "the hub Secret upi-<cluster>-kubeconfig",
+        "warn":"The run's token is in the Job's name: a retry attaches to the same Job,\n"
+               "a new run makes a new one. Failure: InstallerJobFailedError, with the\n"
+               "Job's last log lines."}),
+
+      ("job","vc","both","Install","installing · Job upi-&lt;cluster&gt;-install-&lt;token&gt;",
+       {"call":"bootstrap.py --skip-ignition --skip-dns --skip-argocd",
+        "send":"terraform apply: the VMs and their DNS records (api, api-int, *.apps)",
+        "warn":"Terraform's state lives on the volume upi-<cluster>-work, never deleted.\n"
+               "A new prepare refuses a volume whose state still lists resources."}),
+
+      ("vc","vms","both","The VMs boot","bootstrap, then 3 masters and 3 infra",
+       {"call":"vSphere clones the RHCOS template, one VM per node, with its ignition",
+        "recv":"api and api-int round-robin on the masters, *.apps on the infra nodes",
+        "warn":"No VIPs and no load balancer: DNS round-robin only."}),
+
+      ("wrk","api","both","Verify the cluster","verifying-cluster · every 20 seconds",
+       {"call":"upi_provisioning.await_upi_cluster_ready, as the cluster's admin",
+        "send":"approve pending CSRs of a node bootstrapper or a system:node:* user",
+        "recv":"every recorded node IP is a Ready Node\nClusterVersion Available, with a version",
+        "warn":"bootstrap-installer's CSR loop exits 0 when its time runs out, so a\n"
+               "finished Job proves nothing. After 2 hours: UpiClusterNotReadyError,\n"
+               "naming what is missing."}),
+
+      ("wrk","api","both","Make argocd-manager","registering-argocd · on the cluster",
+       {"call":"upi_provisioning.register_upi_cluster_in_argocd",
+        "send":"kube-system/argocd-manager, its token, a cluster-admin binding"}),
+
+      ("wrk","argo","both","Register in Argo CD","cluster-&lt;cluster&gt; · name: &lt;cluster&gt;",
+       {"call":"create the hub Secret openshift-gitops/cluster-ocp4-prod-mce-five-c, then read it back",
+        "send":"labels: argocd.argoproj.io/secret-type: cluster\n"
+               "name: ocp4-prod-mce-five-c\nserver: https://api.ocp4-prod-mce-five-c.<base domain>:6443",
+        "warn":"The run registers it, not bootstrap-installer: its oc --server --token call\n"
+               "cannot verify the hub's certificate from a pod on the hub. A Secret of\n"
+               "that name for another server: ArgoClusterSecretConflictError."}),
+
+      ("tmp","cll","BM","Publish the MCE folder","publishing-mce-folder",
+       {"call":"cluster_lifecycle.publish_mce_folder, on branch create-upi-cluster/<cluster>",
+        "send":"sites/five/mces/ocp4-prod-mce-five-c/values.yaml   (the request's mce_values)\n"
+               "sites/five/mces/ocp4-prod-mce-five-c/version.yaml  (mastertag: the installed version)",
+        "warn":"No site folder: Day1SiteNotFoundError. An MCE folder of that name\n"
+               "anywhere with other content: MceFolderConflictError."}),
+
+      ("cll","day1","BM","Open the merge request","opening-merge-request · found or created",
+       {"call":"cluster_lifecycle.ensure_merge_request, to day1 main",
+        "recv":"!7, open",
+        "warn":"The folder already on main with this run's content is success, and\n"
+               "opens nothing."}),
+
+      ("day1","day1","BM","A person merges","awaiting-merge · polled every 5 minutes",
+       {"call":"cluster_lifecycle.get_merge_request_state",
+        "recv":"merged",
+        "warn":"No deadline: the run continues-as-new while it waits. Closed without\n"
+               "merging: MergeRequestClosedError. The cluster stands, registered."}),
+
+      ("day1","argo","BM","The ApplicationSet sees it","&lt;site&gt;-mces",
+       {"call":"the hub's five-mces ApplicationSet generates one Application per folder",
+        "send":"destination.name: ocp4-prod-mce-five-c   (the folder's basename)",
+        "warn":"Which is why the Argo CD cluster name, the day1 folder and the segment's\n"
+               "cluster are one string."}),
+
+      ("argo","api","BM","day1 lands on the MCE","GitOps operator, infra, LDAP, kubelet, IDMS",
+       {"call":"the Application syncs the MCE's day1 onto the new cluster",
+        "warn":"From then on the MCE's own Argo CD deploys its day2, in-cluster."}),
+
+      ("tmp","op","both","Completed","the cluster, its segments, API and version",
+       {"recv":"cluster · site · kind · API URL · version · nodes\n"
+               "segments · Argo CD Secret · for an MCE, the merge request",
+        "warn":"Bare-metal workers join later, one run per server: add-server-to-upi\n"
+               "(procedure 24)."}),
+    ])
+
 WORKFLOWS["13-upgrade-hosted-cluster-workers"] = dict(
     title="13 :: Upgrade Hosted Cluster Workers",
     subtitle="Separate from the control plane so unpredictable workload drain cannot delay "

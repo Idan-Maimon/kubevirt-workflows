@@ -1,5 +1,6 @@
 # 23 :: Create UPI Cluster
 
+**Animation:** [`../animations/23-create-upi-cluster.html`](../animations/23-create-upi-cluster.html)
 **Implementation:** `workflow_domains/upi_lifecycle/create_upi_cluster.py` in `team-redbull/workflows`,
 branch `feat/upi-lifecycle` (not merged yet)
 **Installer:** [`team-redbull/bootstrap-installer`](https://github.com/team-redbull/bootstrap-installer), `main` (vSphere)
